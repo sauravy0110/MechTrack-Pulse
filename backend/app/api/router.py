@@ -22,7 +22,7 @@ from app.api.v1.supervisor import router as supervisor_router
 from app.api.v1.owner import router as owner_router
 from app.api.v1.client import router as client_router
 
-api_router = APIRouter(prefix="/api/v1")
+api_router = APIRouter()
 
 # ── Register all routers ─────────────────────────────────────
 api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])

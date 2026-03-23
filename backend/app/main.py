@@ -70,8 +70,9 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="Multi-tenant factory control system with AI & 3D visualization",
     lifespan=lifespan,
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url="/redoc" if settings.DEBUG else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
 )
 
 # ── Metrics ──────────────────────────────────────────────────
@@ -116,7 +117,12 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
 # ── Routes ───────────────────────────────────────────────────
-app.include_router(api_router)
+@app.get("/", tags=["System"])
+def root():
+    """Root endpoint for status verification."""
+    return {"message": f"{settings.APP_NAME} API is running 🚀", "version": settings.APP_VERSION}
+
+app.include_router(api_router, prefix="/api/v1")
 
 
 # ── Health Check ─────────────────────────────────────────────
