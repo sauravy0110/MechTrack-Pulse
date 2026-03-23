@@ -170,7 +170,11 @@ export default function LandingPage() {
                             </div>
                         </div>
                         <div className="mt-4 h-[420px] overflow-hidden rounded-[30px] bg-[linear-gradient(180deg,#eff6ff_0%,#ffffff_100%)]">
-                            <Canvas camera={{ position: [5, 4, 7], fov: 45 }}>
+                            <Canvas
+                                dpr={[1, 1.5]}
+                                gl={{ powerPreference: 'high-performance', antialias: false }}
+                                camera={{ position: [5, 4, 7], fov: 45 }}
+                            >
                                 <HeroVisual />
                                 <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={0.45} />
                             </Canvas>

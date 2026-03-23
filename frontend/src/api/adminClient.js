@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const apiBaseURL = import.meta.env.VITE_API_URL;
+const apiBaseURL = (import.meta.env.VITE_API_URL || '') + '/api/v1';
 
 const adminClient = axios.create({
     baseURL: apiBaseURL,

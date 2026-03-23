@@ -762,7 +762,7 @@ const FactoryScene = memo(function FactoryScene() {
                 shadows
                 camera={{ position: [15, 12, 15], fov: 50, near: 0.1, far: 120 }}
                 gl={{
-                    antialias: true,
+                    antialias: false,
                     alpha: false,
                     powerPreference: 'high-performance',
                 }}
