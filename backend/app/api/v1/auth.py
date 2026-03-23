@@ -1,0 +1,160 @@
+"""
+MechTrack Pulse — Auth API Routes
+
+Endpoints:
+  POST /api/v1/auth/login           → User login → JWT tokens
+  POST /api/v1/auth/refresh         → Refresh access token
+  GET  /api/v1/auth/me              → Current user profile
+  POST /api/v1/auth/change-password → Change password
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status, Request
+from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+
+from app.core.dependencies import get_current_user
+from app.core.rate_limit import limiter
+from app.core.redis import redis_client
+from app.core.security import create_access_token, decode_token
+from app.db.database import get_db
+from app.models.user import User
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    RefreshRequest,
+    TokenResponse,
+    UserProfileResponse,
+)
+from app.services.auth_service import (
+    authenticate_user,
+    change_user_password,
+    create_user_tokens,
+)
+
+router = APIRouter()
+
+
+# ── Login ────────────────────────────────────────────────────
+
+@router.post("/login", response_model=TokenResponse)
+# Login is the only endpoint every new user hits in quick succession during
+# onboarding. A stricter 5/minute per-IP limit caused legitimate same-network
+# first-login flows to trip 429s, so this route uses a higher cap.
+@limiter.limit("30/minute")
+def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate user and return JWT tokens.
+
+    WHY return must_change_password:
+    Frontend checks this flag. If true, it redirects to the
+    change-password screen before allowing any other action.
+    """
+    user, error = authenticate_user(db, login_data.email, login_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=error,
+        )
+
+    tokens = create_user_tokens(user)
+    return tokens
+
+
+# ── Refresh Token ────────────────────────────────────────────
+
+@router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("10/minute")
+def refresh_token(request: Request, refresh_data: RefreshRequest, db: Session = Depends(get_db)):
+    """
+    Exchange a valid refresh token for a new access token.
+
+    WHY needed:
+    Access tokens expire in 30 min. Instead of re-entering
+    credentials, the client sends the refresh token (7-day expiry)
+    to get a fresh access token silently.
+    """
+    payload = decode_token(refresh_data.refresh_token)
+    if payload is None or payload.get("type") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+        )
+
+    jti = payload.get("jti")
+    if not jti:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token format",
+        )
+
+    # ── Token Rotation (Blacklist Check) ─────────────────
+    if redis_client.get(f"bl:{jti}"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+        )
+
+    # ── Revoke current token upon use ────────────────────
+    exp = payload.get("exp")
+    now = datetime.now(timezone.utc).timestamp()
+    ttl = int(exp - now) if exp else 7 * 86400
+    if ttl > 0:
+        redis_client.setex(f"bl:{jti}", ttl, "revoked")
+
+    user_id = payload.get("sub")
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    tokens = create_user_tokens(user)
+    return tokens
+
+
+# ── Current User Profile ─────────────────────────────────────
+
+@router.get("/me", response_model=UserProfileResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    """
+    Return the currently authenticated user's profile.
+    Used by frontend to determine role-based UI rendering.
+    """
+    return UserProfileResponse(
+        id=str(current_user.id),
+        email=current_user.email,
+        full_name=current_user.full_name,
+        role=current_user.role,
+        company_id=str(current_user.company_id),
+        department=current_user.department,
+        phone=current_user.phone,
+        must_change_password=current_user.must_change_password,
+    )
+
+
+# ── Change Password ──────────────────────────────────────────
+
+@router.post("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Change the current user's password.
+
+    WHY important:
+    - New users get temp passwords → MUST change on first login
+    - Enforces password policy (8+ chars, mixed case, digit, special)
+    - Clears must_change_password flag after success
+    """
+    success, message = change_user_password(
+        db, current_user, request.current_password, request.new_password
+    )
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=message,
+        )
+    return {"message": message}

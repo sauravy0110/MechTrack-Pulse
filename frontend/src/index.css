@@ -1,0 +1,195 @@
+@import "tailwindcss";
+
+/* ── MechTrack Pulse Light Theme ───────────────────────── */
+@theme {
+  --color-bg-primary: #f9fafb;
+  --color-bg-secondary: #ffffff;
+  --color-bg-panel: #ffffff;
+  --color-bg-card: #ffffff;
+  --color-bg-hover: #eff6ff;
+  --color-border: #e5e7eb;
+  --color-border-light: #d1d5db;
+  --color-text-primary: #111827;
+  --color-text-secondary: #6b7280;
+  --color-text-muted: #9ca3af;
+  --color-accent: #3b82f6;
+  --color-accent-glow: #2563eb;
+  --color-gold: #d4af37;
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-danger: #ef4444;
+  --color-idle: #6b7280;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+  --font-sans: 'Manrope', 'Segoe UI', sans-serif;
+}
+
+/* ── Base ──────────────────────────────────────────────── */
+html {
+  background: var(--color-bg-primary);
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Scrollbar ─────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-light);
+  border-radius: 9999px;
+  border: 2px solid var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ── Pulse Animation (delayed machines) ────────────────── */
+@keyframes pulse-danger {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-danger {
+  animation: pulse-danger 1.5s ease-in-out infinite;
+}
+
+/* ── Glow effect ───────────────────────────────────────── */
+@keyframes glow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px var(--color-accent-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 20px var(--color-accent-glow);
+  }
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* ── Status colors ─────────────────────────────────────── */
+.status-completed {
+  color: var(--color-success);
+}
+
+.status-in-progress {
+  color: var(--color-warning);
+}
+
+.status-delayed {
+  color: var(--color-danger);
+}
+
+.status-idle {
+  color: var(--color-idle);
+}
+
+/* ── Scene canvas ──────────────────────────────────────── */
+canvas {
+  outline: none !important;
+}
+
+/* ── Smooth transitions for panels ─────────────────────── */
+aside {
+  transition: width 200ms ease-out;
+}
+
+/* ── Custom Animations ─────────────────────────────────── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes zoom-in-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-slide-right {
+  animation: slide-right 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Polyfill for standard animate-in classes used */
+.animate-in {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: forwards;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.zoom-in {
+  animation-name: zoom-in-fade;
+}
+
+.slide-in-from-bottom-4 {
+  animation-name: slide-up;
+}
