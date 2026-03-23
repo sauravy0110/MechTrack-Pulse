@@ -27,7 +27,12 @@ class Settings(BaseSettings):
     DB_MAX_OVERFLOW: int = 50
 
     # ── Security & CORS ──────────────────────────────────────
-    ALLOWED_ORIGINS: list[str] = ["http://localhost:5173"]
+    ALLOWED_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
 
     # ── JWT ──────────────────────────────────────────────────
     SECRET_KEY: str
