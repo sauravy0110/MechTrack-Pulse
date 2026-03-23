@@ -41,13 +41,13 @@ async def lifespan(app: FastAPI):
     """Startup: Create tables (dev only). Shutdown: Cleanup."""
     import app.models  # noqa: F401
 
-    if settings.DEBUG:
-        try:
-            Base.metadata.create_all(bind=engine)
-            print(f"✅ {settings.APP_NAME} — Tables created (DEBUG mode)")
-        except Exception as e:
-            print(f"⚠️  {settings.APP_NAME} — DB not available: {e}")
-            print("   Server will start, but DB operations will fail.")
+    # Ensure tables exist
+    try:
+        Base.metadata.create_all(bind=engine)
+        print(f"✅ {settings.APP_NAME} — Tables verified/created")
+    except Exception as e:
+        print(f"⚠️  {settings.APP_NAME} — DB not available: {e}")
+        print("   Server will start, but DB operations will fail.")
 
     # Seed platform admin
     try:
