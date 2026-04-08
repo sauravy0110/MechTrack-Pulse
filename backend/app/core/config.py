@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     SMTP_USE_SSL: bool = False
 
+    # ── HTTP Email Delivery (Render Free Tier Bypass) ────────
+    RESEND_API_KEY: str | None = None
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

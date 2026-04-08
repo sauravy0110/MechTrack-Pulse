@@ -8,13 +8,14 @@ If SMTP is not configured in .env, it defaults to printing the email configurati
 from email.message import EmailMessage
 import smtplib
 import ssl
+import requests
 
 from app.core.config import get_settings
 
 settings = get_settings()
 
 def _send_email_or_print(message: EmailMessage) -> tuple[bool, str]:
-    if not settings.SMTP_HOST:
+    if not settings.SMTP_HOST and not settings.RESEND_API_KEY:
         print("\n" + "="*50)
         print("MOCK EMAIL DISPATCH (SMTP NOT CONFIGURED)")
         print(f"To: {message['To']}")
@@ -24,6 +25,32 @@ def _send_email_or_print(message: EmailMessage) -> tuple[bool, str]:
         print("="*50 + "\n")
         return True, "Mock email dispatched to console"
 
+    # ── HTTP API Fallback (Bypasses Render Free Tier Firewall) ──
+    if settings.RESEND_API_KEY:
+        try:
+            # Note: For free Resend accounts without a verified domain,
+            # you MUST send from "onboarding@resend.dev" and can ONLY send
+            # to the email address you signed up to Resend with!
+            from_email = settings.SMTP_FROM_EMAIL or "onboarding@resend.dev"
+            payload = {
+                "from": f"{settings.SMTP_FROM_NAME or 'MechTrack'} <{from_email}>",
+                "to": message["To"],
+                "subject": message["Subject"],
+                "text": message.get_content()
+            }
+            headers = {
+                "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            response = requests.post("https://api.resend.com/emails", json=payload, headers=headers, timeout=10)
+            response.raise_for_status()
+            print("HTTP Email Dispatch via Resend: SUCCESS")
+            return True, ""
+        except Exception as exc:
+            print(f"Resend API Error: {exc} - {response.text if 'response' in locals() else ''}")
+            return False, str(exc)
+
+    # ── Standard SMTP Dispatch (Blocked on Render Free Tier) ──
     try:
         if settings.SMTP_USE_SSL:
             with smtplib.SMTP_SSL(
