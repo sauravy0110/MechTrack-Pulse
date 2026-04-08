@@ -77,6 +77,21 @@ def create_user(
     db.commit()
     db.refresh(user)
 
+    # ── Send onboarding email ────────────────────────────
+    from app.models.company import Company
+    from app.services.email_service import send_user_welcome_email
+    
+    company = db.query(Company).filter(Company.id == company_id).first()
+    company_name = company.name if company else "Your Company"
+    
+    send_user_welcome_email(
+        user_name=full_name,
+        user_email=email,
+        company_name=company_name,
+        role=role,
+        temp_password=temp_password
+    )
+
     return user, temp_password, ""
 
 

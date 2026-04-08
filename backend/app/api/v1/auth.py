@@ -24,11 +24,22 @@ from app.schemas.auth import (
     RefreshRequest,
     TokenResponse,
     UserProfileResponse,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from app.services.auth_service import (
     authenticate_user,
     change_user_password,
     create_user_tokens,
+)
+from app.services.email_service import send_password_reset_email
+from app.core.security import (
+    create_access_token, 
+    decode_token, 
+    create_password_reset_token, 
+    verify_password_reset_token,
+    validate_password_strength,
+    hash_password
 )
 
 router = APIRouter()
@@ -158,3 +169,65 @@ def change_password(
             detail=message,
         )
     return {"message": message}
+
+
+# ── Forgot & Reset Password ──────────────────────────────────
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+def forgot_password(request: Request, data: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Send a password reset link to the user's email if it exists.
+    Always returns success to prevent email enumeration.
+    """
+    user = db.query(User).filter(User.email == data.email).first()
+    if user and user.is_active:
+        token = create_password_reset_token(user.email)
+        # Using the frontend port (proxied or standard) since there is no BASE_URL setting.
+        # Assuming Vite runs on localhost:5173 or the domain the app is deployed on.
+        # For simplicity, using a hardcoded placeholder for dev, or the origin header.
+        origin = request.headers.get("origin", "http://localhost:5173")
+        reset_link = f"{origin}/reset-password?token={token}"
+        send_password_reset_email(user_email=user.email, reset_link=reset_link)
+        
+    return {"message": "If an account with that email exists, we sent a password reset link."}
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+def reset_password(request: Request, data: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """
+    Reset password using a valid token and new password.
+    """
+    email = verify_password_reset_token(data.token)
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+        
+    user = db.query(User).filter(User.email == email).first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired reset token.",
+        )
+        
+    # Validate new password strength
+    is_valid, err = validate_password_strength(data.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=err,
+        )
+        
+    # Update password
+    user.hashed_password = hash_password(data.new_password)
+    user.must_change_password = False
+    
+    # We should invalidate active sessions, but since we use JWTs, 
+    # we would need to increment a version or add all active JTI to blacklist.
+    # For now, changing the password works.
+    
+    db.commit()
+    return {"message": "Password has been successfully reset. You can now login."}

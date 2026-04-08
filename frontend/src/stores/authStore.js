@@ -46,6 +46,35 @@ const useAuthStore = create((set, get) => ({
         }
     },
 
+    forgotPassword: async (email) => {
+        set({ loading: true, error: null });
+        try {
+            const { data } = await api.post('/auth/forgot-password', { email });
+            set({ loading: false });
+            return data;
+        } catch (err) {
+            const msg = err.response?.data?.detail || 'Forgot password request failed';
+            set({ loading: false, error: msg });
+            throw err;
+        }
+    },
+
+    resetPassword: async (token, newPassword) => {
+        set({ loading: true, error: null });
+        try {
+            const { data } = await api.post('/auth/reset-password', {
+                token,
+                new_password: newPassword,
+            });
+            set({ loading: false });
+            return data;
+        } catch (err) {
+            const msg = err.response?.data?.detail || 'Password reset failed';
+            set({ loading: false, error: msg });
+            throw err;
+        }
+    },
+
     logout: () => {
         localStorage.removeItem('token');
         localStorage.removeItem('refresh_token');
