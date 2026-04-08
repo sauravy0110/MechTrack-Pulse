@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     PLATFORM_ADMIN_PASSWORD: str = "Admin@12345"
 
     # ── SMTP Email Delivery ──────────────────────────────────
-    SMTP_HOST: str | None = None
+    SMTP_HOST: str | None = "smtp.gmail.com"
     SMTP_PORT: int = 587
     SMTP_USERNAME: str | None = None
     SMTP_PASSWORD: str | None = None
