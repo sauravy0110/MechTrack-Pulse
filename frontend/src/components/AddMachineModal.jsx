@@ -1,183 +1,95 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'framer-motion';
 import useAppStore from '../stores/appStore';
+import { X, Plus, MapPin } from 'lucide-react';
 
-const INITIAL_FORM = {
-    machine_name: '',
-    location_x: '',
-    location_y: '',
-    location_z: '',
-};
-
-function toGridCoordinate(value) {
-    if (value === '' || value == null) {
-        return 0;
-    }
-
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.round(parsed) : 0;
-}
+const INITIAL_FORM = { machine_name: '', location_x: '', location_y: '', location_z: '' };
+function toGridCoordinate(value) { if (value === '' || value == null) return 0; const parsed = Number(value); return Number.isFinite(parsed) ? Math.round(parsed) : 0; }
 
 export default function AddMachineModal() {
     const closeModal = useAppStore((state) => state.closeAddMachineModal);
     const createMachine = useAppStore((state) => state.createMachine);
     const creatingMachine = useAppStore((state) => state.creatingMachine);
-
     const [formData, setFormData] = useState(INITIAL_FORM);
     const [error, setError] = useState('');
 
     useEffect(() => {
-        const handleEscape = (event) => {
-            if (event.key === 'Escape' && !creatingMachine) {
-                closeModal();
-            }
-        };
-
-        window.addEventListener('keydown', handleEscape);
-        return () => window.removeEventListener('keydown', handleEscape);
+        const h = (e) => { if (e.key === 'Escape' && !creatingMachine) closeModal(); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
     }, [creatingMachine, closeModal]);
 
-    const handleChange = (event) => {
-        const { name, value } = event.target;
-        setFormData((current) => ({ ...current, [name]: value }));
-        setError('');
-    };
+    const handleChange = (e) => { setFormData((c) => ({ ...c, [e.target.name]: e.target.value })); setError(''); };
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-
+    const handleSubmit = async (e) => {
+        e.preventDefault();
         const machineName = formData.machine_name.trim();
-        if (!machineName) {
-            setError('Machine name is required.');
-            return;
-        }
-
+        if (!machineName) { setError('Machine name is required.'); return; }
         try {
-            await createMachine({
-                name: machineName,
-                grid_x: toGridCoordinate(formData.location_x),
-                grid_y: toGridCoordinate(formData.location_z),
-            });
+            await createMachine({ name: machineName, grid_x: toGridCoordinate(formData.location_x), grid_y: toGridCoordinate(formData.location_z) });
             closeModal();
-        } catch (createError) {
-            setError(createError.message || 'Unable to create machine right now.');
-        }
+        } catch (err) { setError(err.message || 'Unable to create machine right now.'); }
     };
 
     return (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-[rgba(15,23,42,0.18)] px-4 py-8">
-            <div className="w-full max-w-lg rounded-[32px] border border-border bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:p-8">
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8">
+            <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+                className="w-full max-w-lg glass-strong rounded-3xl p-7 shadow-2xl sm:p-8"
+            >
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-accent">Machine management</p>
-                        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary">Add Machine</h2>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">
-                            Create a machine and place it on the factory grid. `X` and `Z` drive floor placement. `Y` is reserved for future elevation controls.
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">Machine management</p>
+                        <h2 className="mt-2 text-2xl font-bold tracking-tight text-text-primary">Add Machine</h2>
+                        <p className="mt-2 text-xs leading-6 text-text-secondary">
+                            Create a machine and place it on the factory grid.
                         </p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={closeModal}
-                        disabled={creatingMachine}
-                        className="rounded-full border border-border px-3 py-2 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        Close
-                    </button>
+                    <button type="button" onClick={closeModal} disabled={creatingMachine}
+                        className="btn-ghost rounded-full p-2 disabled:opacity-50"><X size={16} /></button>
                 </div>
 
-                {error ? (
-                    <div className="mt-6 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
-                        {error}
-                    </div>
-                ) : null}
+                {error && (
+                    <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                        className="mt-5 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-xs text-danger">{error}</motion.div>
+                )}
 
-                <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+                <form onSubmit={handleSubmit} className="mt-5 space-y-4">
                     <div>
-                        <label htmlFor="machine_name" className="mb-2 block text-sm font-medium text-text-primary">
-                            Machine name
-                        </label>
-                        <input
-                            id="machine_name"
-                            name="machine_name"
-                            type="text"
-                            value={formData.machine_name}
-                            onChange={handleChange}
-                            className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                            placeholder="CNC-01"
-                            autoFocus
-                            required
-                        />
+                        <label htmlFor="machine_name" className="mb-1.5 block text-xs font-semibold text-text-primary">Machine name</label>
+                        <input id="machine_name" name="machine_name" type="text" value={formData.machine_name} onChange={handleChange}
+                            className="input-glass w-full rounded-xl px-4 py-3 text-sm" placeholder="CNC-01" autoFocus required />
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        {[{ id: 'location_x', label: 'X' }, { id: 'location_y', label: 'Y' }, { id: 'location_z', label: 'Z' }].map((f) => (
+                            <div key={f.id}>
+                                <label htmlFor={f.id} className="mb-1.5 flex items-center gap-1 text-xs font-semibold text-text-primary">
+                                    <MapPin size={10} className="text-text-muted" /> {f.label}
+                                </label>
+                                <input id={f.id} name={f.id} type="number" value={formData[f.id]} onChange={handleChange}
+                                    className="input-glass w-full rounded-xl px-4 py-3 text-sm" placeholder="0" />
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-3">
-                        <div>
-                            <label htmlFor="location_x" className="mb-2 block text-sm font-medium text-text-primary">
-                                Location X
-                            </label>
-                            <input
-                                id="location_x"
-                                name="location_x"
-                                type="number"
-                                value={formData.location_x}
-                                onChange={handleChange}
-                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                placeholder="0"
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="location_y" className="mb-2 block text-sm font-medium text-text-primary">
-                                Location Y
-                            </label>
-                            <input
-                                id="location_y"
-                                name="location_y"
-                                type="number"
-                                value={formData.location_y}
-                                onChange={handleChange}
-                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                placeholder="0"
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="location_z" className="mb-2 block text-sm font-medium text-text-primary">
-                                Location Z
-                            </label>
-                            <input
-                                id="location_z"
-                                name="location_z"
-                                type="number"
-                                value={formData.location_z}
-                                onChange={handleChange}
-                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                placeholder="0"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-secondary">
-                        Machines created here are inserted instantly into the store and the 3D factory scene.
+                    <div className="glass-card rounded-xl px-4 py-3 text-xs text-text-secondary">
+                        Machines sync instantly to the 3D scene over WebSocket.
                     </div>
 
                     <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                        <button
-                            type="button"
-                            onClick={closeModal}
-                            disabled={creatingMachine}
-                            className="rounded-2xl border border-border px-4 py-3 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={creatingMachine}
-                            className="flex items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-accent-glow disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            {creatingMachine ? 'Creating...' : '+ Add Machine'}
-                        </button>
+                        <button type="button" onClick={closeModal} disabled={creatingMachine}
+                            className="btn-ghost rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-50">Cancel</button>
+                        <motion.button type="submit" disabled={creatingMachine} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                            className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                            {creatingMachine ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> :
+                                <><Plus size={14} /> Add Machine</>}
+                        </motion.button>
                     </div>
                 </form>
-            </div>
+            </motion.div>
         </div>
     );
 }

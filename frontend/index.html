@@ -4,11 +4,22 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="MechTrack Pulse — Digital Factory Control System with 3D visualization and real-time monitoring" />
+    <meta name="theme-color" content="#f0f2f5" />
+    <meta name="description" content="MechTrack Pulse — Digital Factory Control System with 3D visualization, real-time monitoring, and AI-powered insights" />
+    <meta name="color-scheme" content="light dark" />
     <title>MechTrack Pulse — Factory Control</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      // Prevent FOUC by applying theme before render
+      (function(){
+        var t = localStorage.getItem('mechtrack-theme');
+        if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', t);
+        document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#06080f' : '#f0f2f5');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

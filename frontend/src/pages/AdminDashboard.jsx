@@ -1,34 +1,27 @@
 import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import adminClient from '../api/adminClient';
 import { getApiErrorMessage } from '../utils/apiError';
+import ThemeToggle from '../components/ThemeToggle';
+import { Shield, RefreshCw, LogOut, CheckCircle, AlertCircle, Copy, Building2, Mail, Phone, Calendar, X } from 'lucide-react';
 
 function formatDate(value) {
-    if (!value) {
-        return 'Recently submitted';
-    }
-
+    if (!value) return 'Recently submitted';
     try {
-        return new Intl.DateTimeFormat('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-        }).format(new Date(value));
-    } catch {
-        return 'Recently submitted';
-    }
+        return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
+    } catch { return 'Recently submitted'; }
 }
 
 function createApprovalForms(companies) {
-    return companies.reduce((forms, company) => {
-        forms[company.id] = {
-            owner_name: company.owner_name || '',
-            owner_email: company.owner_email || '',
-            owner_phone: company.owner_phone || '',
-        };
+    return companies.reduce((forms, c) => {
+        forms[c.id] = { owner_name: c.owner_name || '', owner_email: c.owner_email || '', owner_phone: c.owner_phone || '' };
         return forms;
     }, {});
 }
+
+const fadeUp = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } };
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 
 export default function AdminDashboard() {
     const navigate = useNavigate();
@@ -42,402 +35,233 @@ export default function AdminDashboard() {
     const [cardErrors, setCardErrors] = useState({});
     const [approvalNotice, setApprovalNotice] = useState(null);
 
-    useEffect(() => {
-        if (!toast) {
-            return undefined;
-        }
-
-        const timer = window.setTimeout(() => setToast(''), 3500);
-        return () => window.clearTimeout(timer);
-    }, [toast]);
+    useEffect(() => { if (toast) { const t = setTimeout(() => setToast(''), 3500); return () => clearTimeout(t); } }, [toast]);
 
     useEffect(() => {
         let active = true;
-
-        const loadCompanies = async () => {
-            setLoading(true);
-            setError('');
-
+        const load = async () => {
+            setLoading(true); setError('');
             try {
-                const { data } = await adminClient.get('/platform/companies', {
-                    params: { status: 'pending' },
-                });
-
-                if (!active) {
-                    return;
-                }
-
-                const safeCompanies = Array.isArray(data) ? data : [];
-                setCompanies(safeCompanies);
-                setApprovalForms(createApprovalForms(safeCompanies));
-            } catch (requestError) {
-                if (active) {
-                    setError(getApiErrorMessage(requestError, 'Unable to load pending companies.'));
-                }
-            } finally {
-                if (active) {
-                    setLoading(false);
-                }
-            }
+                const { data } = await adminClient.get('/platform/companies', { params: { status: 'pending' } });
+                if (!active) return;
+                const safe = Array.isArray(data) ? data : [];
+                setCompanies(safe);
+                setApprovalForms(createApprovalForms(safe));
+            } catch (e) { if (active) setError(getApiErrorMessage(e, 'Unable to load pending companies.')); }
+            finally { if (active) setLoading(false); }
         };
-
-        loadCompanies();
-
-        return () => {
-            active = false;
-        };
+        load();
+        return () => { active = false; };
     }, []);
 
+    if (!token) return <Navigate to="/admin/login" replace />;
+
     const pendingCount = companies.length;
-    const subtitle = loading
-        ? 'Loading pending approvals'
-        : pendingCount === 0
-            ? 'No pending companies'
-            : `${pendingCount} pending ${pendingCount === 1 ? 'company' : 'companies'}`;
+    const subtitle = loading ? 'Loading...' : pendingCount === 0 ? 'No pending companies' : `${pendingCount} pending`;
 
-    if (!token) {
-        return <Navigate to="/admin/login" replace />;
-    }
-
-    const updateForm = (companyId, field, value) => {
-        setApprovalForms((current) => ({
-            ...current,
-            [companyId]: {
-                ...current[companyId],
-                [field]: value,
-            },
-        }));
-
-        setCardErrors((current) => ({
-            ...current,
-            [companyId]: '',
-        }));
+    const updateForm = (id, field, value) => {
+        setApprovalForms((c) => ({ ...c, [id]: { ...c[id], [field]: value } }));
+        setCardErrors((c) => ({ ...c, [id]: '' }));
     };
 
     const reloadCompanies = async () => {
-        setLoading(true);
-        setError('');
-
+        setLoading(true); setError('');
         try {
-            const { data } = await adminClient.get('/platform/companies', {
-                params: { status: 'pending' },
-            });
-
-            const safeCompanies = Array.isArray(data) ? data : [];
-            setCompanies(safeCompanies);
-            setApprovalForms(createApprovalForms(safeCompanies));
-        } catch (requestError) {
-            setError(getApiErrorMessage(requestError, 'Unable to refresh pending companies.'));
-        } finally {
-            setLoading(false);
-        }
+            const { data } = await adminClient.get('/platform/companies', { params: { status: 'pending' } });
+            const safe = Array.isArray(data) ? data : [];
+            setCompanies(safe);
+            setApprovalForms(createApprovalForms(safe));
+        } catch (e) { setError(getApiErrorMessage(e, 'Refresh failed.')); }
+        finally { setLoading(false); }
     };
 
     const handleApprove = async (company) => {
         const form = approvalForms[company.id] || {};
-        const payload = {
-            owner_name: form.owner_name?.trim() || '',
-            owner_email: form.owner_email?.trim() || '',
-            owner_phone: form.owner_phone?.trim() || '',
-        };
-
-        if (payload.owner_name.length < 2) {
-            setCardErrors((current) => ({
-                ...current,
-                [company.id]: 'Owner name is required before approval.',
-            }));
-            return;
-        }
-
-        if (!payload.owner_email) {
-            setCardErrors((current) => ({
-                ...current,
-                [company.id]: 'Owner email is required before approval.',
-            }));
-            return;
-        }
-
+        const payload = { owner_name: form.owner_name?.trim() || '', owner_email: form.owner_email?.trim() || '', owner_phone: form.owner_phone?.trim() || '' };
+        if (payload.owner_name.length < 2) { setCardErrors((c) => ({ ...c, [company.id]: 'Owner name is required.' })); return; }
+        if (!payload.owner_email) { setCardErrors((c) => ({ ...c, [company.id]: 'Owner email is required.' })); return; }
         setApprovingId(company.id);
-        setCardErrors((current) => ({
-            ...current,
-            [company.id]: '',
-        }));
-
+        setCardErrors((c) => ({ ...c, [company.id]: '' }));
         try {
             const { data } = await adminClient.patch(`/platform/companies/${company.id}/approve`, payload);
-            setCompanies((current) => current.filter((item) => item.id !== company.id));
-            setApprovalForms((current) => {
-                const next = { ...current };
-                delete next[company.id];
-                return next;
-            });
+            setCompanies((c) => c.filter((i) => i.id !== company.id));
+            setApprovalForms((c) => { const n = { ...c }; delete n[company.id]; return n; });
             setApprovalNotice({
-                companyName: company.name,
-                ownerEmail: data.owner_email || payload.owner_email,
-                emailSent: Boolean(data.email_sent),
-                tempPassword: data.temp_password || '',
-                note: data.note || '',
-                emailError: data.email_error || '',
+                companyName: company.name, ownerEmail: data.owner_email || payload.owner_email,
+                emailSent: Boolean(data.email_sent), tempPassword: data.temp_password || '',
+                note: data.note || '', emailError: data.email_error || '',
             });
-            setToast(
-                data.email_sent
-                    ? `${company.name} approved and temp password emailed.`
-                    : `${company.name} approved. Email failed, temp password shown below.`
-            );
-        } catch (requestError) {
-            setCardErrors((current) => ({
-                ...current,
-                [company.id]: getApiErrorMessage(requestError, 'Unable to approve this company right now.'),
-            }));
-        } finally {
-            setApprovingId('');
-        }
+            setToast(data.email_sent ? `${company.name} approved!` : `${company.name} approved. See temp password.`);
+        } catch (e) { setCardErrors((c) => ({ ...c, [company.id]: getApiErrorMessage(e, 'Approval failed.') })); }
+        finally { setApprovingId(''); }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('admin_token');
-        navigate('/admin/login', { replace: true });
-    };
+    const handleLogout = () => { localStorage.removeItem('admin_token'); navigate('/admin/login', { replace: true }); };
 
     return (
-        <div className="min-h-screen bg-bg-primary text-text-primary">
-            {toast ? (
-                <div className="fixed right-6 top-6 z-50 rounded-2xl border border-success/20 bg-white px-4 py-3 text-sm font-medium text-success shadow-[0_18px_40px_rgba(15,23,42,0.12)]">
-                    {toast}
-                </div>
-            ) : null}
+        <div className="min-h-screen text-text-primary">
+            <div className="pointer-events-none fixed inset-0 bg-mesh z-0" />
 
-            <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-6 py-8 sm:px-10 lg:px-12">
-                <header className="flex flex-col gap-5 rounded-[32px] border border-border bg-white p-6 shadow-[0_20px_50px_rgba(15,23,42,0.07)] lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                        <div className="inline-flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-[0_10px_24px_rgba(59,130,246,0.22)]">
-                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                                </svg>
-                            </div>
-                            <div>
-                                <p className="text-sm font-semibold uppercase tracking-[0.22em] text-gold">Platform Console</p>
-                                <h1 className="mt-1 text-3xl font-semibold tracking-tight">Admin dashboard</h1>
-                            </div>
+            <AnimatePresence>
+                {toast && (
+                    <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 40 }}
+                        className="fixed right-5 top-5 z-50 glass-strong rounded-xl px-4 py-3 text-xs font-semibold text-success flex items-center gap-2 glow-success">
+                        <CheckCircle size={14} /> {toast}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-12">
+                <motion.header initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }}
+                    className="glass-strong rounded-2xl p-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold text-black glow-gold">
+                            <Shield size={18} />
                         </div>
-                        <p className="mt-4 text-sm text-text-secondary">{subtitle}</p>
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">Platform Console</p>
+                            <h1 className="text-xl font-bold tracking-tight">Admin Dashboard</h1>
+                            <p className="text-[10px] text-text-muted mt-0.5">{subtitle}</p>
+                        </div>
                     </div>
-
-                    <div className="flex flex-wrap gap-3">
-                        <button
-                            type="button"
-                            onClick={reloadCompanies}
-                            className="rounded-full bg-gold px-5 py-2.5 text-sm font-semibold text-text-primary shadow-[0_10px_22px_rgba(212,175,55,0.18)] transition hover:brightness-105"
-                        >
-                            Refresh
-                        </button>
-                        <Link
-                            to="/login"
-                            className="rounded-full border border-border px-5 py-2.5 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent"
-                        >
-                            User Login
-                        </Link>
-                        <button
-                            type="button"
-                            onClick={handleLogout}
-                            className="rounded-full border border-border px-5 py-2.5 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent"
-                        >
-                            Logout
+                    <div className="flex flex-wrap gap-2">
+                        <ThemeToggle />
+                        <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} onClick={reloadCompanies}
+                            className="btn-gold rounded-full px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5">
+                            <RefreshCw size={12} /> Refresh
+                        </motion.button>
+                        <Link to="/login" className="btn-ghost rounded-full px-4 py-2 text-xs font-medium">User Login</Link>
+                        <button onClick={handleLogout} className="btn-ghost rounded-full px-4 py-2 text-xs font-medium inline-flex items-center gap-1.5">
+                            <LogOut size={12} /> Logout
                         </button>
                     </div>
-                </header>
+                </motion.header>
 
-                <div className="mt-8 rounded-[28px] border border-border bg-white px-6 py-5 text-sm text-text-secondary shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                    Pending registrations currently expose company metadata only. Owner details can be filled in here before approval, and approved owners are forced to change their temporary password on first login.
-                </div>
-
-                {approvalNotice ? (
-                    <div className="mt-8 rounded-[28px] border border-success/20 bg-white px-6 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
+                {approvalNotice && (
+                    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                        className="mt-6 glass-strong rounded-2xl p-5 border border-success/20 glow-success">
                         <div className="flex items-start justify-between gap-4">
                             <div>
-                                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-success">Owner access ready</p>
-                                <h2 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">
-                                    {approvalNotice.companyName} approved
-                                </h2>
-                                <p className="mt-2 text-sm text-text-secondary">
-                                    Owner email: <span className="font-medium text-text-primary">{approvalNotice.ownerEmail}</span>
-                                </p>
-                                <p className="mt-2 text-sm text-text-secondary">
-                                    {approvalNotice.emailSent
-                                        ? 'The temporary password was emailed. On first login, the owner will be redirected to change it before accessing the dashboard.'
-                                        : 'Email is not configured or failed. Share the temporary password below, and the owner will be forced to change it on first login.'}
+                                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-success">Owner Access Ready</p>
+                                <h2 className="mt-1 text-xl font-bold tracking-tight">{approvalNotice.companyName} approved</h2>
+                                <p className="mt-2 text-xs text-text-secondary">Owner: <span className="font-semibold text-text-primary">{approvalNotice.ownerEmail}</span></p>
+                                <p className="mt-1 text-xs text-text-secondary">
+                                    {approvalNotice.emailSent ? 'Temp password emailed. Owner must change on first login.' : 'Email failed. Share the temp password below.'}
                                 </p>
                             </div>
-                            <button
-                                type="button"
-                                onClick={() => setApprovalNotice(null)}
-                                className="rounded-full border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent"
-                            >
-                                Dismiss
-                            </button>
+                            <button onClick={() => setApprovalNotice(null)} className="btn-ghost rounded-full p-2"><X size={14} /></button>
                         </div>
-
-                        {!approvalNotice.emailSent ? (
-                            <div className="mt-5 rounded-2xl border border-gold/20 bg-gold/10 px-4 py-4">
-                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-gold">Temporary password</p>
-                                <p className="mt-2 font-mono text-lg font-semibold text-text-primary">{approvalNotice.tempPassword}</p>
-                                {approvalNotice.note ? (
-                                    <p className="mt-2 text-sm text-text-secondary">{approvalNotice.note}</p>
-                                ) : null}
-                                {approvalNotice.emailError ? (
-                                    <p className="mt-2 text-sm text-danger">{approvalNotice.emailError}</p>
-                                ) : null}
+                        {!approvalNotice.emailSent && (
+                            <div className="mt-4 rounded-xl bg-gold/10 border border-gold/20 p-4">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gold">Temporary Password</p>
+                                <div className="mt-2 flex items-center gap-2">
+                                    <p className="font-mono text-lg font-bold text-text-primary">{approvalNotice.tempPassword}</p>
+                                    <button onClick={() => navigator.clipboard?.writeText(approvalNotice.tempPassword)}
+                                        className="text-text-muted hover:text-accent transition-colors"><Copy size={14} /></button>
+                                </div>
+                                {approvalNotice.emailError && <p className="mt-2 text-xs text-danger">{approvalNotice.emailError}</p>}
                             </div>
-                        ) : null}
-                    </div>
-                ) : null}
+                        )}
+                    </motion.div>
+                )}
 
-                {error ? (
-                    <div className="mt-8 rounded-[28px] border border-danger/20 bg-white px-6 py-5 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                        <p className="text-sm text-danger">{error}</p>
-                        <button
-                            type="button"
-                            onClick={reloadCompanies}
-                            className="mt-4 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.2)] transition hover:bg-accent-glow"
-                        >
-                            Retry
-                        </button>
-                    </div>
-                ) : null}
+                {error && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 glass-strong rounded-2xl p-5 border border-danger/20">
+                        <p className="text-xs text-danger flex items-center gap-2"><AlertCircle size={14} /> {error}</p>
+                        <button onClick={reloadCompanies} className="mt-3 btn-primary rounded-full px-4 py-2 text-xs font-semibold">Retry</button>
+                    </motion.div>
+                )}
 
-                {loading ? (
-                    <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                        {Array.from({ length: 3 }).map((_, index) => (
-                            <div key={index} className="rounded-[28px] border border-border bg-white p-6 shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                                <div className="h-4 w-28 animate-pulse rounded-full bg-bg-secondary" />
-                                <div className="mt-4 h-8 w-3/4 animate-pulse rounded-full bg-bg-secondary" />
-                                <div className="mt-8 space-y-3">
-                                    <div className="h-12 animate-pulse rounded-2xl bg-bg-secondary" />
-                                    <div className="h-12 animate-pulse rounded-2xl bg-bg-secondary" />
-                                    <div className="h-12 animate-pulse rounded-2xl bg-bg-secondary" />
+                {loading && (
+                    <div className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                        {[0, 1, 2].map((i) => (
+                            <div key={i} className="glass-card rounded-2xl p-5">
+                                <div className="h-3 w-24 animate-shimmer rounded-full" />
+                                <div className="mt-4 h-6 w-3/4 animate-shimmer rounded-full" />
+                                <div className="mt-6 space-y-3">
+                                    <div className="h-10 animate-shimmer rounded-xl" />
+                                    <div className="h-10 animate-shimmer rounded-xl" />
                                 </div>
                             </div>
                         ))}
                     </div>
-                ) : null}
+                )}
 
-                {!loading && !error && companies.length === 0 ? (
-                    <div className="mt-8 rounded-[32px] border border-border bg-white px-8 py-16 text-center shadow-[0_18px_40px_rgba(15,23,42,0.05)]">
-                        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-gold">All clear</p>
-                        <h2 className="mt-3 text-3xl font-semibold tracking-tight">No pending companies</h2>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">
-                            New registrations will appear here as soon as they are submitted.
-                        </p>
-                    </div>
-                ) : null}
+                {!loading && !error && companies.length === 0 && (
+                    <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}
+                        className="mt-6 glass-strong rounded-2xl px-8 py-14 text-center">
+                        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 200, damping: 12 }}
+                            className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-success/10 border border-success/20 mb-4">
+                            <CheckCircle size={24} className="text-success" />
+                        </motion.div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">All Clear</p>
+                        <h2 className="mt-2 text-2xl font-bold tracking-tight">No pending companies</h2>
+                        <p className="mt-2 text-sm text-text-secondary">New registrations will appear here.</p>
+                    </motion.div>
+                )}
 
-                {!loading && companies.length > 0 ? (
-                    <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {!loading && companies.length > 0 && (
+                    <motion.div initial="hidden" animate="show" variants={stagger} className="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         {companies.map((company) => {
                             const form = approvalForms[company.id] || {};
                             const cardError = cardErrors[company.id];
                             const isApproving = approvingId === company.id;
-
                             return (
-                                <article
-                                    key={company.id}
-                                    className="rounded-[28px] border border-border bg-white p-6 shadow-[0_18px_40px_rgba(15,23,42,0.05)]"
-                                >
-                                    <div className="flex items-start justify-between gap-4">
+                                <motion.article key={company.id} variants={fadeUp} className="glass-card rounded-2xl p-5">
+                                    <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-accent">Pending company</p>
-                                            <h2 className="mt-2 text-2xl font-semibold tracking-tight text-text-primary">{company.name}</h2>
+                                            <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-accent">Pending</p>
+                                            <h2 className="mt-1 text-lg font-bold tracking-tight">{company.name}</h2>
                                         </div>
-                                        <span className="rounded-full bg-gold/15 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-gold">
+                                        <span className="rounded-full bg-gold/10 border border-gold/20 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.15em] text-gold">
                                             Pending
                                         </span>
                                     </div>
-
-                                    <dl className="mt-6 space-y-4">
-                                        <div>
-                                            <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">GST number</dt>
-                                            <dd className="mt-1 text-sm font-medium text-text-primary">
-                                                {company.gst_number || 'Not provided'}
-                                            </dd>
+                                    <dl className="mt-4 space-y-2 text-xs">
+                                        <div className="flex items-center gap-2 text-text-secondary">
+                                            <Building2 size={12} /> <span>{company.gst_number || 'No GST'}</span>
                                         </div>
-                                        <div>
-                                            <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Owner email</dt>
-                                            <dd className="mt-1 text-sm text-text-secondary">
-                                                {form.owner_email || 'Not exposed by the current API. Enter it below to approve.'}
-                                            </dd>
-                                        </div>
-                                        <div>
-                                            <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Submitted</dt>
-                                            <dd className="mt-1 text-sm font-medium text-text-primary">{formatDate(company.created_at)}</dd>
+                                        <div className="flex items-center gap-2 text-text-secondary">
+                                            <Calendar size={12} /> <span>{formatDate(company.created_at)}</span>
                                         </div>
                                     </dl>
-
-                                    <div className="mt-6 space-y-4 border-t border-border pt-6">
+                                    <div className="mt-4 space-y-3 border-t border-border pt-4">
                                         <div>
-                                            <label htmlFor={`owner-name-${company.id}`} className="mb-2 block text-sm font-medium text-text-primary">
-                                                Owner name
+                                            <label className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                                                <span>Owner Name</span>
                                             </label>
-                                            <input
-                                                id={`owner-name-${company.id}`}
-                                                type="text"
-                                                value={form.owner_name || ''}
-                                                onChange={(event) => updateForm(company.id, 'owner_name', event.target.value)}
-                                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                                placeholder="Owner full name"
-                                                required
-                                            />
+                                            <input type="text" value={form.owner_name || ''} onChange={(e) => updateForm(company.id, 'owner_name', e.target.value)}
+                                                className="input-glass w-full rounded-lg px-3 py-2.5 text-xs" placeholder="Full name" required />
                                         </div>
-
                                         <div>
-                                            <label htmlFor={`owner-email-${company.id}`} className="mb-2 block text-sm font-medium text-text-primary">
-                                                Owner email
+                                            <label className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                                                <Mail size={10} /> Email
                                             </label>
-                                            <input
-                                                id={`owner-email-${company.id}`}
-                                                type="email"
-                                                value={form.owner_email || ''}
-                                                onChange={(event) => updateForm(company.id, 'owner_email', event.target.value)}
-                                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                                placeholder="owner@company.com"
-                                                required
-                                            />
+                                            <input type="email" value={form.owner_email || ''} onChange={(e) => updateForm(company.id, 'owner_email', e.target.value)}
+                                                className="input-glass w-full rounded-lg px-3 py-2.5 text-xs" placeholder="owner@company.com" required />
                                         </div>
-
                                         <div>
-                                            <label htmlFor={`owner-phone-${company.id}`} className="mb-2 block text-sm font-medium text-text-primary">
-                                                Owner phone
+                                            <label className="mb-1 flex items-center gap-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">
+                                                <Phone size={10} /> Phone
                                             </label>
-                                            <input
-                                                id={`owner-phone-${company.id}`}
-                                                type="tel"
-                                                value={form.owner_phone || ''}
-                                                onChange={(event) => updateForm(company.id, 'owner_phone', event.target.value)}
-                                                className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                                placeholder="Optional"
-                                            />
+                                            <input type="tel" value={form.owner_phone || ''} onChange={(e) => updateForm(company.id, 'owner_phone', e.target.value)}
+                                                className="input-glass w-full rounded-lg px-3 py-2.5 text-xs" placeholder="Optional" />
                                         </div>
                                     </div>
-
-                                    {cardError ? (
-                                        <div className="mt-4 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
-                                            {cardError}
-                                        </div>
-                                    ) : null}
-
-                                    <button
-                                        type="button"
-                                        onClick={() => handleApprove(company)}
-                                        disabled={isApproving}
-                                        className="mt-6 flex w-full items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-accent-glow disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                        {isApproving ? 'Approving...' : 'Approve'}
-                                    </button>
-                                </article>
+                                    {cardError && (
+                                        <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-[11px] text-danger">{cardError}</div>
+                                    )}
+                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                                        onClick={() => handleApprove(company)} disabled={isApproving}
+                                        className="mt-4 btn-primary w-full rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed">
+                                        {isApproving ? <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> :
+                                            <><CheckCircle size={13} /> Approve</>}
+                                    </motion.button>
+                                </motion.article>
                             );
                         })}
-                    </div>
-                ) : null}
+                    </motion.div>
+                )}
             </div>
         </div>
     );

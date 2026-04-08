@@ -1,16 +1,29 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import useAuthStore from '../stores/authStore';
+import ThemeToggle from '../components/ThemeToggle';
+import { Factory, Lock, Eye, EyeOff, ArrowRight, Shield, Monitor } from 'lucide-react';
+
+const fadeUp = {
+    hidden: { opacity: 0, y: 24 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } },
+};
+
+const stagger = {
+    hidden: {},
+    show: { transition: { staggerChildren: 0.07 } },
+};
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPass, setShowPass] = useState(false);
     const { login, loading, error } = useAuthStore();
     const navigate = useNavigate();
 
     const handleSubmit = async (event) => {
         event.preventDefault();
-
         try {
             const data = await login(email, password);
             if (data.must_change_password) {
@@ -19,83 +32,112 @@ export default function LoginPage() {
                 navigate('/dashboard', { replace: true });
             }
         } catch {
-            // Store error is rendered below.
+            // Store error rendered below
         }
     };
 
     return (
-        <div className="min-h-screen bg-bg-primary text-text-primary">
-            <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-8 sm:px-10 lg:px-12">
-                <header className="flex items-center justify-between">
-                    <Link to="/" className="inline-flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white shadow-[0_10px_24px_rgba(59,130,246,0.22)]">
-                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-                            </svg>
+        <div className="min-h-screen text-text-primary">
+            <div className="pointer-events-none fixed inset-0 bg-mesh z-0" />
+            <div className="pointer-events-none fixed inset-0 bg-dot-pattern opacity-30 z-0" />
+
+            <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6 sm:px-8 lg:px-12">
+                {/* Header */}
+                <motion.header
+                    initial={{ opacity: 0, y: -16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex items-center justify-between"
+                >
+                    <Link to="/" className="inline-flex items-center gap-3 group">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white glow-accent group-hover:scale-105 transition-transform">
+                            <Factory size={18} />
                         </div>
                         <div>
-                            <p className="text-lg font-semibold tracking-tight">MechTrack Pulse</p>
-                            <p className="text-sm text-text-secondary">User workspace</p>
+                            <p className="text-sm font-bold tracking-tight">MechTrack Pulse</p>
+                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">User Workspace</p>
                         </div>
                     </Link>
-
-                    <div className="hidden items-center gap-3 sm:flex">
-                        <Link to="/admin/login" className="rounded-full bg-gold px-4 py-2 text-sm font-semibold text-text-primary shadow-[0_10px_22px_rgba(212,175,55,0.18)] transition hover:brightness-105">
-                            Admin Login
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                        <Link to="/admin/login" className="hidden sm:inline-flex btn-gold rounded-full px-4 py-2 text-xs font-semibold">
+                            Admin
                         </Link>
-                        <Link to="/register" className="rounded-full border border-border px-4 py-2 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent">
-                            Register Company
+                        <Link to="/register" className="hidden sm:inline-flex btn-ghost rounded-full px-4 py-2 text-xs font-medium">
+                            Register
                         </Link>
                     </div>
-                </header>
+                </motion.header>
 
-                <div className="flex flex-1 items-center justify-center py-12">
-                    <div className="grid w-full max-w-5xl gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-                        <section className="rounded-[32px] border border-border bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-10">
-                            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-accent">User login</p>
-                            <h1 className="mt-4 text-4xl font-semibold tracking-tight">Access the production workspace.</h1>
-                            <p className="mt-4 text-base leading-7 text-text-secondary">
-                                Owners, supervisors, operators, and clients all sign in here to access the role-specific MechTrack workspace.
-                            </p>
+                <div className="flex flex-1 items-center justify-center py-10">
+                    <div className="grid w-full max-w-5xl gap-7 lg:grid-cols-[0.95fr_1.05fr]">
+                        {/* Left Info Panel */}
+                        <motion.section
+                            initial="hidden" animate="show" variants={stagger}
+                            className="glass-strong rounded-3xl p-7 sm:p-9"
+                        >
+                            <motion.p variants={fadeUp} className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">User Login</motion.p>
+                            <motion.h1 variants={fadeUp} className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl leading-tight">
+                                Access the <span className="gradient-text">production workspace</span>.
+                            </motion.h1>
+                            <motion.p variants={fadeUp} className="mt-4 text-sm leading-7 text-text-secondary">
+                                Owners, supervisors, operators, and clients sign in to access their role-specific MechTrack workspace.
+                            </motion.p>
 
-                            <div className="mt-8 space-y-4">
-                                <div className="rounded-3xl border border-border bg-bg-secondary p-5">
-                                    <p className="text-sm font-semibold text-text-primary">Live machine visibility</p>
-                                    <p className="mt-2 text-sm leading-6 text-text-secondary">Track workstations, assignments, and risk in one place.</p>
-                                </div>
-                                <div className="rounded-3xl border border-border bg-bg-secondary p-5">
-                                    <p className="text-sm font-semibold text-text-primary">Separate admin flow</p>
-                                    <p className="mt-2 text-sm leading-6 text-text-secondary">Platform admins approve companies from their own secure route.</p>
-                                </div>
-                            </div>
-                        </section>
+                            <motion.div variants={stagger} className="mt-7 space-y-3">
+                                <motion.div variants={fadeUp} className="glass-card rounded-2xl p-4 flex items-start gap-3">
+                                    <Monitor size={16} className="text-accent mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-bold text-text-primary">Live 3D Visibility</p>
+                                        <p className="mt-1 text-xs leading-5 text-text-secondary">Track workstations, assignments, and risk in real-time.</p>
+                                    </div>
+                                </motion.div>
+                                <motion.div variants={fadeUp} className="glass-card rounded-2xl p-4 flex items-start gap-3">
+                                    <Shield size={16} className="text-gold mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="text-xs font-bold text-text-primary">Separate Admin Flow</p>
+                                        <p className="mt-1 text-xs leading-5 text-text-secondary">Platform admins approve companies from their own secure route.</p>
+                                    </div>
+                                </motion.div>
+                            </motion.div>
+                        </motion.section>
 
-                        <section className="rounded-[32px] border border-border bg-white p-8 shadow-[0_24px_70px_rgba(15,23,42,0.08)] sm:p-10">
-                            <div className="mb-8">
-                                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-gold">Welcome back</p>
-                                <h2 className="mt-3 text-3xl font-semibold tracking-tight">User login</h2>
-                                <p className="mt-3 text-sm leading-6 text-text-secondary">
+                        {/* Right Form Panel */}
+                        <motion.section
+                            initial={{ opacity: 0, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+                            className="glass-strong rounded-3xl p-7 sm:p-9"
+                        >
+                            <div className="mb-7">
+                                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gold">Welcome Back</p>
+                                <h2 className="mt-2 text-2xl font-bold tracking-tight">Sign in</h2>
+                                <p className="mt-2 text-xs leading-5 text-text-secondary">
                                     Use your company credentials to enter the dashboard.
                                 </p>
                             </div>
 
-                            {error ? (
-                                <div className="mb-6 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
+                            {error && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="mb-5 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-xs text-danger flex items-center gap-2"
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
                                     {error}
-                                </div>
-                            ) : null}
+                                </motion.div>
+                            )}
 
-                            <form onSubmit={handleSubmit} className="space-y-5">
+                            <form onSubmit={handleSubmit} className="space-y-4">
                                 <div>
-                                    <label htmlFor="user-email" className="mb-2 block text-sm font-medium text-text-primary">
+                                    <label htmlFor="user-email" className="mb-1.5 block text-xs font-semibold text-text-primary">
                                         Email
                                     </label>
                                     <input
                                         id="user-email"
                                         type="email"
                                         value={email}
-                                        onChange={(event) => setEmail(event.target.value)}
-                                        className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="input-glass w-full rounded-xl px-4 py-3 text-sm"
                                         placeholder="operator@company.com"
                                         autoComplete="email"
                                         required
@@ -103,42 +145,57 @@ export default function LoginPage() {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="user-password" className="mb-2 block text-sm font-medium text-text-primary">
+                                    <label htmlFor="user-password" className="mb-1.5 block text-xs font-semibold text-text-primary">
                                         Password
                                     </label>
-                                    <input
-                                        id="user-password"
-                                        type="password"
-                                        value={password}
-                                        onChange={(event) => setPassword(event.target.value)}
-                                        className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                        placeholder="Enter password"
-                                        autoComplete="current-password"
-                                        required
-                                    />
+                                    <div className="relative">
+                                        <input
+                                            id="user-password"
+                                            type={showPass ? 'text' : 'password'}
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="input-glass w-full rounded-xl px-4 py-3 pr-10 text-sm"
+                                            placeholder="Enter password"
+                                            autoComplete="current-password"
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPass(!showPass)}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                                        >
+                                            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                                        </button>
+                                    </div>
                                 </div>
 
-                                <button
+                                <motion.button
                                     type="submit"
                                     disabled={loading}
-                                    className="flex w-full items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-accent-glow disabled:cursor-not-allowed disabled:opacity-60"
+                                    whileHover={{ scale: 1.01 }}
+                                    whileTap={{ scale: 0.98 }}
+                                    className="btn-primary w-full rounded-xl px-4 py-3 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                    {loading ? 'Signing in...' : 'Sign In'}
-                                </button>
+                                    {loading ? (
+                                        <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                        <>Sign In <ArrowRight size={14} /></>
+                                    )}
+                                </motion.button>
                             </form>
 
-                            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-6 text-sm text-text-secondary">
-                                <Link to="/admin/login" className="font-medium text-accent transition hover:text-accent-glow">
+                            <div className="mt-6 flex flex-col gap-2 border-t border-border pt-5 text-xs text-text-secondary">
+                                <Link to="/admin/login" className="font-medium text-accent hover:text-accent-glow transition-colors">
                                     Need platform access? Go to admin login
                                 </Link>
-                                <Link to="/register" className="transition hover:text-text-primary">
+                                <Link to="/register" className="hover:text-text-primary transition-colors">
                                     New company? Register here
                                 </Link>
-                                <Link to="/" className="transition hover:text-text-primary">
+                                <Link to="/" className="hover:text-text-primary transition-colors">
                                     Back to home
                                 </Link>
                             </div>
-                        </section>
+                        </motion.section>
                     </div>
                 </div>
             </div>

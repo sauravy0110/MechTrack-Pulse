@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import useAppStore from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
+import { X, Plus, Copy, CheckCircle, User, Mail, Phone } from 'lucide-react';
 
-const INITIAL_FORM = {
-    full_name: '',
-    email: '',
-    phone: '',
-    role: 'operator',
-};
-
-const ROLE_LABELS = {
-    supervisor: 'Supervisor',
-    operator: 'Operator',
-    client: 'Client',
-};
+const INITIAL_FORM = { full_name: '', email: '', phone: '', role: 'operator' };
+const ROLE_LABELS = { supervisor: 'Supervisor', operator: 'Operator', client: 'Client' };
 
 export default function AddUserModal() {
     const closeModal = useAppStore((state) => state.closeAddUserModal);
@@ -22,259 +14,131 @@ export default function AddUserModal() {
     const currentUserRole = useAuthStore((state) => state.user?.role);
 
     const allowedRoles = useMemo(() => {
-        if (currentUserRole === 'owner') {
-            return ['supervisor', 'operator', 'client'];
-        }
-        if (currentUserRole === 'supervisor') {
-            return ['operator'];
-        }
+        if (currentUserRole === 'owner') return ['supervisor', 'operator', 'client'];
+        if (currentUserRole === 'supervisor') return ['operator'];
         return [];
     }, [currentUserRole]);
 
-    const [formData, setFormData] = useState(() => ({
-        ...INITIAL_FORM,
-        role: allowedRoles[0] || 'operator',
-    }));
+    const [formData, setFormData] = useState(() => ({ ...INITIAL_FORM, role: allowedRoles[0] || 'operator' }));
     const [error, setError] = useState('');
     const [createdUser, setCreatedUser] = useState(null);
     const [copied, setCopied] = useState(false);
     const selectedRole = allowedRoles.includes(formData.role) ? formData.role : (allowedRoles[0] || '');
 
     useEffect(() => {
-        const handleEscape = (event) => {
-            if (event.key === 'Escape' && !creatingUser) {
-                closeModal();
-            }
-        };
-
-        window.addEventListener('keydown', handleEscape);
-        return () => window.removeEventListener('keydown', handleEscape);
+        const h = (e) => { if (e.key === 'Escape' && !creatingUser) closeModal(); };
+        window.addEventListener('keydown', h);
+        return () => window.removeEventListener('keydown', h);
     }, [creatingUser, closeModal]);
 
-    const handleChange = (event) => {
-        const { name, value } = event.target;
-        setFormData((current) => ({ ...current, [name]: value }));
-        setError('');
-        setCopied(false);
-    };
+    const handleChange = (e) => { setFormData((c) => ({ ...c, [e.target.name]: e.target.value })); setError(''); setCopied(false); };
 
-    const handleSubmit = async (event) => {
-        event.preventDefault();
-
-        const full_name = formData.full_name.trim();
-        const email = formData.email.trim();
-        const phone = formData.phone.trim();
-
-        if (full_name.length < 2) {
-            setError('Name must be at least 2 characters.');
-            return;
-        }
-
-        if (!email) {
-            setError('Email is required.');
-            return;
-        }
-
-        try {
-            const data = await createUser({
-                full_name,
-                email,
-                phone,
-                role: selectedRole,
-            });
-            setCreatedUser({
-                ...data,
-                phone,
-            });
-        } catch (createError) {
-            setError(createError.message || 'Unable to add user right now.');
-        }
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        const full_name = formData.full_name.trim(), email = formData.email.trim(), phone = formData.phone.trim();
+        if (full_name.length < 2) { setError('Name must be at least 2 characters.'); return; }
+        if (!email) { setError('Email is required.'); return; }
+        try { const data = await createUser({ full_name, email, phone, role: selectedRole }); setCreatedUser({ ...data, phone }); }
+        catch (err) { setError(err.message || 'Unable to add user.'); }
     };
 
     const handleCopy = async () => {
-        if (!createdUser) {
-            return;
-        }
-
-        const payload = `Email: ${createdUser.email}\nTemp Password: ${createdUser.temp_password}`;
-
-        try {
-            await navigator.clipboard.writeText(payload);
-            setCopied(true);
-        } catch {
-            setCopied(false);
-            setError('Unable to copy credentials automatically. Please copy them manually.');
-        }
+        if (!createdUser) return;
+        try { await navigator.clipboard.writeText(`Email: ${createdUser.email}\nTemp Password: ${createdUser.temp_password}`); setCopied(true); }
+        catch { setError('Unable to copy. Please copy manually.'); }
     };
 
     return (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-[rgba(15,23,42,0.18)] px-4 py-8">
-            <div className="w-full max-w-lg rounded-[32px] border border-border bg-white p-7 shadow-[0_24px_70px_rgba(15,23,42,0.12)] sm:p-8">
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="w-full max-w-lg glass-strong rounded-3xl p-7 shadow-2xl sm:p-8">
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-accent">Team management</p>
-                        <h2 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary">Add User</h2>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">
-                            Create a team member and share the temporary password once. New users are forced to change it on first login.
-                        </p>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">Team management</p>
+                        <h2 className="mt-2 text-2xl font-bold tracking-tight text-text-primary">Add User</h2>
+                        <p className="mt-2 text-xs leading-6 text-text-secondary">New users must change their temp password on first login.</p>
                     </div>
-                    <button
-                        type="button"
-                        onClick={closeModal}
-                        disabled={creatingUser}
-                        className="rounded-full border border-border px-3 py-2 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        Close
-                    </button>
+                    <button type="button" onClick={closeModal} disabled={creatingUser}
+                        className="btn-ghost rounded-full p-2 disabled:opacity-50"><X size={16} /></button>
                 </div>
 
-                {createdUser ? (
-                    <div className="mt-8 rounded-[28px] border border-success/20 bg-success/5 p-6">
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-success">User Created</p>
-                        <h3 className="mt-3 text-xl font-semibold text-text-primary">{createdUser.full_name}</h3>
-                        <p className="mt-2 text-sm text-text-secondary">
-                            {ROLE_LABELS[createdUser.role]} access is ready. Share these credentials securely.
-                        </p>
+                <AnimatePresence mode="wait">
+                    {createdUser ? (
+                        <motion.div key="success" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+                            className="mt-6 glass-card rounded-2xl p-6 border-success/20 glow-success">
+                            <div className="flex items-center gap-2 text-success mb-3">
+                                <CheckCircle size={16} />
+                                <p className="text-xs font-bold uppercase tracking-[0.2em]">User Created</p>
+                            </div>
+                            <h3 className="text-xl font-bold text-text-primary">{createdUser.full_name}</h3>
+                            <p className="mt-1 text-xs text-text-secondary">{ROLE_LABELS[createdUser.role]} access is ready.</p>
 
-                        <div className="mt-5 space-y-3 rounded-2xl border border-border bg-white px-4 py-4">
-                            <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm text-text-secondary">Email</span>
-                                <span className="text-sm font-medium text-text-primary">{createdUser.email}</span>
+                            <div className="mt-4 space-y-2 glass-card rounded-xl px-4 py-4">
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-text-secondary">Email</span>
+                                    <span className="font-medium text-text-primary">{createdUser.email}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-3 text-sm">
+                                    <span className="text-text-secondary">Temp Password</span>
+                                    <span className="rounded-lg bg-bg-hover px-3 py-1.5 font-mono text-sm font-semibold text-text-primary">{createdUser.temp_password}</span>
+                                </div>
                             </div>
-                            <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm text-text-secondary">Temp Password</span>
-                                <span className="rounded-xl bg-bg-secondary px-3 py-1.5 font-mono text-sm font-semibold text-text-primary">
-                                    {createdUser.temp_password}
-                                </span>
+                            {error && <div className="mt-3 rounded-lg border border-danger/20 bg-danger/5 px-3 py-2 text-xs text-danger">{error}</div>}
+                            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                <button type="button" onClick={closeModal} className="btn-ghost rounded-xl px-4 py-3 text-sm font-medium">Close</button>
+                                <motion.button type="button" onClick={handleCopy} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                                    className="btn-gold rounded-xl px-5 py-3 text-sm font-semibold inline-flex items-center justify-center gap-2">
+                                    {copied ? <><CheckCircle size={14} /> Copied</> : <><Copy size={14} /> Copy</>}
+                                </motion.button>
                             </div>
-                        </div>
-
-                        {error ? (
-                            <div className="mt-4 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
-                                {error}
-                            </div>
-                        ) : null}
-
-                        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                            <button
-                                type="button"
-                                onClick={closeModal}
-                                className="rounded-2xl border border-border px-4 py-3 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent"
-                            >
-                                Close
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCopy}
-                                className="rounded-2xl bg-gold px-5 py-3 text-sm font-semibold text-text-primary shadow-[0_14px_28px_rgba(212,175,55,0.18)] transition hover:brightness-105"
-                            >
-                                {copied ? 'Copied' : 'Copy'}
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        {error ? (
-                            <div className="mt-6 rounded-2xl border border-danger/20 bg-danger/5 px-4 py-3 text-sm text-danger">
-                                {error}
-                            </div>
-                        ) : null}
-
-                        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-                            <div>
-                                <label htmlFor="full_name" className="mb-2 block text-sm font-medium text-text-primary">
-                                    Name
-                                </label>
-                                <input
-                                    id="full_name"
-                                    name="full_name"
-                                    type="text"
-                                    value={formData.full_name}
-                                    onChange={handleChange}
-                                    className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                    placeholder="Riya Shah"
-                                    autoFocus
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="email" className="mb-2 block text-sm font-medium text-text-primary">
-                                    Email
-                                </label>
-                                <input
-                                    id="email"
-                                    name="email"
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={handleChange}
-                                    className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                    placeholder="user@company.com"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="role" className="mb-2 block text-sm font-medium text-text-primary">
-                                    Role
-                                </label>
-                                <select
-                                    id="role"
-                                    name="role"
-                                    value={selectedRole}
-                                    onChange={handleChange}
-                                    className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                >
-                                    {allowedRoles.map((role) => (
-                                        <option key={role} value={role}>
-                                            {ROLE_LABELS[role]}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label htmlFor="phone" className="mb-2 block text-sm font-medium text-text-primary">
-                                    Phone <span className="text-text-muted">(optional)</span>
-                                </label>
-                                <input
-                                    id="phone"
-                                    name="phone"
-                                    type="tel"
-                                    value={formData.phone}
-                                    onChange={handleChange}
-                                    className="w-full rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-primary outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/10"
-                                    placeholder="+91 9876543210"
-                                />
-                            </div>
-
-                            <div className="rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm text-text-secondary">
-                                {currentUserRole === 'owner'
-                                    ? 'Owners can create supervisors, operators, and clients.'
-                                    : 'Supervisors can create operator accounts only.'}
-                            </div>
-
-                            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                                <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    disabled={creatingUser}
-                                    className="rounded-2xl border border-border px-4 py-3 text-sm font-medium text-text-secondary transition hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    disabled={creatingUser || allowedRoles.length === 0}
-                                    className="flex items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-accent-glow disabled:cursor-not-allowed disabled:opacity-60"
-                                >
-                                    {creatingUser ? 'Creating...' : '+ Add User'}
-                                </button>
-                            </div>
-                        </form>
-                    </>
-                )}
-            </div>
+                        </motion.div>
+                    ) : (
+                        <motion.div key="form">
+                            {error && (
+                                <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+                                    className="mt-5 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-xs text-danger">{error}</motion.div>
+                            )}
+                            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+                                <div>
+                                    <label htmlFor="full_name" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold"><User size={12} className="text-text-muted" /> Name</label>
+                                    <input id="full_name" name="full_name" type="text" value={formData.full_name} onChange={handleChange}
+                                        className="input-glass w-full rounded-xl px-4 py-3 text-sm" placeholder="Riya Shah" autoFocus required />
+                                </div>
+                                <div>
+                                    <label htmlFor="email" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold"><Mail size={12} className="text-text-muted" /> Email</label>
+                                    <input id="email" name="email" type="email" value={formData.email} onChange={handleChange}
+                                        className="input-glass w-full rounded-xl px-4 py-3 text-sm" placeholder="user@company.com" required />
+                                </div>
+                                <div>
+                                    <label htmlFor="role" className="mb-1.5 block text-xs font-semibold">Role</label>
+                                    <select id="role" name="role" value={selectedRole} onChange={handleChange}
+                                        className="input-glass w-full rounded-xl px-4 py-3 text-sm">
+                                        {allowedRoles.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label htmlFor="phone" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold"><Phone size={12} className="text-text-muted" /> Phone <span className="text-text-muted">(optional)</span></label>
+                                    <input id="phone" name="phone" type="tel" value={formData.phone} onChange={handleChange}
+                                        className="input-glass w-full rounded-xl px-4 py-3 text-sm" placeholder="+91 9876543210" />
+                                </div>
+                                <div className="glass-card rounded-xl px-4 py-3 text-xs text-text-secondary">
+                                    {currentUserRole === 'owner' ? 'Owners can create supervisors, operators, and clients.' : 'Supervisors can create operator accounts only.'}
+                                </div>
+                                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                    <button type="button" onClick={closeModal} disabled={creatingUser}
+                                        className="btn-ghost rounded-xl px-4 py-3 text-sm font-medium disabled:opacity-50">Cancel</button>
+                                    <motion.button type="submit" disabled={creatingUser || allowedRoles.length === 0}
+                                        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
+                                        className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                                        {creatingUser ? <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" /> :
+                                            <><Plus size={14} /> Add User</>}
+                                    </motion.button>
+                                </div>
+                            </form>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </motion.div>
         </div>
     );
 }

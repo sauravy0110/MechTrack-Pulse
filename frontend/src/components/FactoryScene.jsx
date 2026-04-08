@@ -17,6 +17,7 @@ import { OrbitControls, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import useAppStore from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
+import useThemeStore from '../stores/themeStore';
 import { playClickSound } from '../utils/audio';
 
 // ── Constants ───────────────────────────────────────────────
@@ -469,7 +470,7 @@ const HoverTooltip = memo(function HoverTooltip({ hoveredData, worldPosition }) 
             distanceFactor={12}
             style={{ pointerEvents: 'none' }}
         >
-            <div className="bg-bg-panel/95 backdrop-blur-sm border border-border rounded-lg px-3.5 py-2.5 shadow-2xl whitespace-nowrap">
+            <div className="glass-strong rounded-xl px-3.5 py-2.5 shadow-2xl whitespace-nowrap">
                 <p className="text-xs font-bold text-text-primary">{machine.name}</p>
                 <div className="flex items-center gap-1.5 mt-1">
                     <div
@@ -486,14 +487,20 @@ const HoverTooltip = memo(function HoverTooltip({ hoveredData, worldPosition }) 
     );
 });
 
-// ── Factory Floor Grid ──────────────────────────────────────
+// ── Factory Floor Grid — Theme-aware ────────────────────────
 const FloorGrid = memo(function FloorGrid() {
+    const theme = useThemeStore((s) => s.theme);
+    const isDark = theme === 'dark';
+    const gridColor1 = isDark ? '#1e293b' : '#cbd5e1';
+    const gridColor2 = isDark ? '#0f1623' : '#e2e8f0';
+    const floorColor = isDark ? '#0c1018' : '#f0f2f5';
+
     return (
         <group>
-            <gridHelper args={[48, 48, '#1e293b', '#0f1623']} position={[0, -0.6, 0]} />
+            <gridHelper args={[48, 48, gridColor1, gridColor2]} position={[0, -0.6, 0]} />
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.61, 0]} receiveShadow>
                 <planeGeometry args={[48, 48]} />
-                <meshStandardMaterial color="#0c1018" roughness={0.95} metalness={0.05} />
+                <meshStandardMaterial color={floorColor} roughness={0.95} metalness={0.05} />
             </mesh>
         </group>
     );
@@ -507,14 +514,14 @@ function CameraHUD() {
     const setMode = useAppStore(s => s.setCameraMode);
 
     return (
-        <div className="absolute top-3 right-3 flex gap-1 bg-bg-panel/80 backdrop-blur-md p-1 rounded-lg border border-border z-10 shadow-lg pointer-events-auto">
+        <div className="absolute top-3 right-3 flex gap-1 glass-strong p-1 rounded-xl z-10 shadow-lg pointer-events-auto">
             {['overview', 'focus', 'alert'].map(m => (
                 <button
                     key={m}
                     onClick={() => { playClickSound(); setMode(m); }}
-                    className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded transition-colors cursor-pointer ${mode === m
-                        ? m === 'alert' ? 'bg-danger/20 text-danger border border-danger/50'
-                            : 'bg-accent/20 text-accent border border-accent/50'
+                    className={`px-3 py-1.5 text-[10px] font-bold uppercase rounded-lg transition-all cursor-pointer ${mode === m
+                        ? m === 'alert' ? 'bg-danger/20 text-danger border border-danger/50 glow-danger'
+                            : 'bg-accent/20 text-accent border border-accent/50 glow-accent'
                         : 'text-text-muted hover:text-text-primary hover:bg-bg-hover border border-transparent'
                         }`}
                 >
@@ -630,9 +637,9 @@ function SceneContent() {
 // ── PART 7: Loading + Empty Skeleton ────────────────────────
 function SceneSkeleton() {
     return (
-        <div className="flex-1 flex items-center justify-center bg-bg-primary">
+        <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-                <div className="w-10 h-10 border-2 border-accent/40 border-t-accent rounded-full animate-spin mx-auto mb-4" />
+                <div className="w-12 h-12 border-2 border-accent/30 border-t-accent rounded-full animate-spin-glow mx-auto mb-4" />
                 <p className="text-xs text-text-muted font-mono tracking-wider">INITIALIZING 3D ENGINE</p>
                 <p className="text-[10px] text-text-muted/60 mt-1">Loading factory floor...</p>
             </div>
@@ -647,19 +654,19 @@ function EmptyState() {
 
     return (
         <Html center>
-            <div className="bg-bg-panel/80 backdrop-blur-sm border border-border rounded-xl px-6 py-4 text-center shadow-2xl">
-                <div className="w-10 h-10 bg-bg-card rounded-lg flex items-center justify-center mx-auto mb-3 border border-border">
-                    <svg className="w-5 h-5 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="glass-strong rounded-2xl px-6 py-5 text-center shadow-2xl">
+                <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center mx-auto mb-3 border border-accent/20">
+                    <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
                     </svg>
                 </div>
-                <p className="text-sm font-medium text-text-primary">No Machines</p>
+                <p className="text-sm font-bold text-text-primary">No Machines</p>
                 <p className="text-xs text-text-muted mt-1">Add a machine to populate the factory floor</p>
                 {canCreateMachine ? (
                     <button
                         type="button"
                         onClick={openAddMachineModal}
-                        className="mt-4 rounded-xl bg-accent px-4 py-2.5 text-xs font-semibold text-white shadow-[0_12px_24px_rgba(59,130,246,0.22)] transition hover:bg-accent-glow"
+                        className="mt-4 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold"
                     >
                         + Add Machine to start factory
                     </button>
@@ -687,7 +694,7 @@ const MobileFallback = memo(function MobileFallback() {
     };
 
     return (
-        <div className="flex-1 overflow-y-auto bg-bg-primary p-4">
+        <div className="flex-1 overflow-y-auto p-4">
             <p className="text-xs text-text-muted font-mono uppercase tracking-wider mb-3">
                 Factory Floor · {machines.length} machines
             </p>
@@ -699,7 +706,7 @@ const MobileFallback = memo(function MobileFallback() {
                         <button
                             key={m.id}
                             onClick={() => setSelectedMachine(m)}
-                            className="bg-bg-card border border-border rounded-lg p-3 text-left hover:border-accent/30 transition-colors cursor-pointer"
+                            className="glass-card rounded-xl p-3 text-left cursor-pointer"
                         >
                             <div className="flex items-center gap-2 mb-1.5">
                                 <div className={`w-2.5 h-2.5 rounded-full ${statusDot[status]}`} />
@@ -719,7 +726,7 @@ const MobileFallback = memo(function MobileFallback() {
                         <button
                             type="button"
                             onClick={openAddMachineModal}
-                            className="mt-4 rounded-2xl bg-accent px-4 py-3 text-xs font-semibold text-white shadow-[0_14px_28px_rgba(59,130,246,0.24)] transition hover:bg-accent-glow"
+                            className="mt-4 btn-primary rounded-xl px-4 py-3 text-xs font-semibold"
                         >
                             + Add Machine to start factory
                         </button>
@@ -733,12 +740,30 @@ const MobileFallback = memo(function MobileFallback() {
 // ─────────────────────────────────────────────────────────────
 // Main Factory Scene — responsive wrapper
 // ─────────────────────────────────────────────────────────────
+// ── Theme-aware scene wrapper for clear color + fog ─────────
+function ThemeAwareScene({ children }) {
+    const theme = useThemeStore((s) => s.theme);
+    const { gl, scene } = useThree();
+
+    useEffect(() => {
+        const isDark = theme === 'dark';
+        const bgColor = isDark ? '#06080f' : '#f0f2f5';
+        gl.setClearColor(bgColor);
+        if (scene.fog) {
+            scene.fog.color.set(bgColor);
+        }
+    }, [theme, gl, scene]);
+
+    return children;
+}
+
 const FactoryScene = memo(function FactoryScene() {
     const machines = useAppStore((s) => s.machines);
     const loadingMachines = useAppStore((s) => s.loadingMachines);
+    const theme = useThemeStore((s) => s.theme);
+    const isDark = theme === 'dark';
     const [isMobile, setIsMobile] = useState(false);
 
-    // ── PART 8: Responsive detection ───────────────────────
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 768);
         check();
@@ -746,15 +771,15 @@ const FactoryScene = memo(function FactoryScene() {
         return () => window.removeEventListener('resize', check);
     }, []);
 
-    // Mobile → 2D fallback (no heavy 3D)
     if (isMobile) {
         return <MobileFallback />;
     }
 
-    // PART 7: Loading state while data is being fetched
     if (loadingMachines && machines.length === 0) {
         return <SceneSkeleton />;
     }
+
+    const bgColor = isDark ? '#06080f' : '#f0f2f5';
 
     return (
         <div className="flex-1 relative">
@@ -766,54 +791,53 @@ const FactoryScene = memo(function FactoryScene() {
                     alpha: false,
                     powerPreference: 'high-performance',
                 }}
-                dpr={[1, 1.5]} // Limit pixel ratio for performance
+                dpr={[1, 1.5]}
                 onCreated={({ gl }) => {
-                    gl.setClearColor('#f3f4f6');
+                    gl.setClearColor(bgColor);
                     gl.toneMapping = THREE.ACESFilmicToneMapping;
-                    gl.toneMappingExposure = 1.1;
+                    gl.toneMappingExposure = isDark ? 0.9 : 1.1;
                     gl.shadowMap.type = THREE.PCFShadowMap;
                 }}
             >
-                {/* PART 6: Optimized lighting — only 3 lights total */}
-                <ambientLight intensity={0.35} />
-                <directionalLight
-                    position={[12, 18, 10]}
-                    intensity={0.9}
-                    castShadow
-                    shadow-mapSize={[1024, 1024]}
-                    shadow-camera-near={0.5}
-                    shadow-camera-far={50}
-                    shadow-camera-left={-25}
-                    shadow-camera-right={25}
-                    shadow-camera-top={25}
-                    shadow-camera-bottom={-25}
-                    shadow-bias={-0.0001}
-                />
-                <pointLight position={[-12, 6, -12]} intensity={0.2} color="#3b82f6" distance={30} decay={2} />
+                <ThemeAwareScene>
+                    <ambientLight intensity={isDark ? 0.2 : 0.35} />
+                    <directionalLight
+                        position={[12, 18, 10]}
+                        intensity={isDark ? 0.7 : 0.9}
+                        castShadow
+                        shadow-mapSize={[1024, 1024]}
+                        shadow-camera-near={0.5}
+                        shadow-camera-far={50}
+                        shadow-camera-left={-25}
+                        shadow-camera-right={25}
+                        shadow-camera-top={25}
+                        shadow-camera-bottom={-25}
+                        shadow-bias={-0.0001}
+                    />
+                    <pointLight position={[-12, 6, -12]} intensity={isDark ? 0.4 : 0.2} color="#818cf8" distance={30} decay={2} />
+                    {isDark && <pointLight position={[12, 4, -8]} intensity={0.15} color="#fbbf24" distance={20} decay={2} />}
 
-                {/* PART 6: Fog for visual depth */}
-                <fog attach="fog" args={['#f3f4f6', 20, 55]} />
+                    <fog attach="fog" args={[bgColor, isDark ? 25 : 20, isDark ? 60 : 55]} />
 
-                {/* Scene — Suspense wraps all 3D content */}
-                <Suspense fallback={null}>
-                    <SceneContent />
-                    {machines.length === 0 && !loadingMachines && <EmptyState />}
-                </Suspense>
+                    <Suspense fallback={null}>
+                        <SceneContent />
+                        {machines.length === 0 && !loadingMachines && <EmptyState />}
+                    </Suspense>
+                </ThemeAwareScene>
             </Canvas>
 
             {/* HUD overlay — controls hint */}
-            <div className="absolute bottom-3 left-3 text-[10px] text-text-muted/60 font-mono pointer-events-none select-none">
+            <div className="absolute bottom-3 left-3 glass-strong rounded-lg px-3 py-1.5 text-[10px] text-text-muted/60 font-mono pointer-events-none select-none">
                 FACTORY FLOOR · ORBIT: DRAG · ZOOM: SCROLL · SELECT: CLICK
             </div>
 
             {/* Machine count overlay */}
             {machines.length > 0 && (
-                <div className="absolute top-3 left-3 text-[10px] text-text-muted/50 font-mono pointer-events-none select-none">
+                <div className="absolute top-3 left-3 glass-strong rounded-lg px-3 py-1.5 text-[10px] text-text-muted/50 font-mono pointer-events-none select-none">
                     {machines.length} MACHINE{machines.length !== 1 ? 'S' : ''} · INSTANCED RENDER
                 </div>
             )}
 
-            {/* Camera Modes Overlay */}
             {!isMobile && <CameraHUD />}
         </div>
     );
