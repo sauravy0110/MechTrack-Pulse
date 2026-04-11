@@ -48,7 +48,7 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
         "text": body,
     }
     headers = {
-        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}",
         "Content-Type": "application/json",
     }
 
@@ -93,7 +93,7 @@ def _try_brevo(to: str, subject: str, body: str) -> tuple[bool, str]:
     
     headers = {
         "accept": "application/json",
-        "api-key": settings.BREVO_API_KEY,
+        "api-key": settings.BREVO_API_KEY.strip(),
         "content-type": "application/json"
     }
 
