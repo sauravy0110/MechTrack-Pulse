@@ -71,6 +71,50 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _try_brevo(to: str, subject: str, body: str) -> tuple[bool, str]:
+    """Send via Brevo HTTP API (allows sending to ANY email for free without custom domain)."""
+    if not settings.BREVO_API_KEY:
+        return False, "BREVO_API_KEY not configured"
+
+    from_email = settings.SMTP_FROM_EMAIL or "noreply@mechtrackpulse.com"
+    from_name = settings.SMTP_FROM_NAME or "MechTrack Pulse"
+
+    payload = {
+        "sender": {
+            "name": from_name,
+            "email": from_email
+        },
+        "to": [
+            {"email": to}
+        ],
+        "subject": subject,
+        "textContent": body
+    }
+    
+    headers = {
+        "accept": "application/json",
+        "api-key": settings.BREVO_API_KEY,
+        "content-type": "application/json"
+    }
+
+    try:
+        resp = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            data=json.dumps(payload),
+            headers=headers,
+            timeout=15,
+        )
+        if resp.status_code in (200, 201, 202):
+            logger.info("✅ Email sent via Brevo API → %s", to)
+            return True, ""
+        else:
+            detail = resp.text[:300]
+            logger.warning("Brevo API rejected (%s): %s", resp.status_code, detail)
+            return False, f"Brevo {resp.status_code}: {detail}"
+    except requests.RequestException as exc:
+        logger.warning("Brevo API network error: %s", exc)
+        return False, str(exc)
+
 def _try_smtp(message: EmailMessage) -> tuple[bool, str]:
     """Send via traditional SMTP (requires open port 587/465)."""
     host = settings.SMTP_HOST
@@ -129,17 +173,22 @@ def _dispatch(message: EmailMessage) -> tuple[bool, str]:
     subject = message["Subject"]
     body = message.get_content()
 
-    # 1️⃣  Resend HTTP API  (best for Render free tier)
+    # 1️⃣  Brevo HTTP API  (Best free option — can email anyone)
+    ok, err = _try_brevo(to, subject, body)
+    if ok:
+        return True, ""
+
+    # 2️⃣  Resend HTTP API  (Requires domain verification to email anyone)
     ok, err = _try_resend(to, subject, body)
     if ok:
         return True, ""
 
-    # 2️⃣  SMTP  (best for local dev / paid hosting)
+    # 3️⃣  SMTP  (Requires paid Render tier / unblocked port)
     ok, err = _try_smtp(message)
     if ok:
         return True, ""
 
-    # 3️⃣  Console  (never fails)
+    # 4️⃣  Console  (never fails)
     return _console_fallback(to, subject, body)
 
 

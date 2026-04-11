@@ -61,6 +61,7 @@ class Settings(BaseSettings):
 
     # ── HTTP Email Delivery (Render Free Tier Bypass) ────────
     RESEND_API_KEY: str | None = None
+    BREVO_API_KEY: str | None = None
 
     model_config = {
         "env_file": ".env",
