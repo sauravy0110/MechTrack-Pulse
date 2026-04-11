@@ -310,6 +310,21 @@ const useAppStore = create((set, get) => ({
         }
     },
 
+    deactivateUser: async (userId) => {
+        try {
+            await api.delete(`/users/${userId}`);
+            set((state) => ({
+                users: state.users.filter((user) => user.id !== userId),
+                operators: state.operators.filter((op) => op.id !== userId)
+            }));
+            get().addAlert('User deactivated successfully.', 'success');
+            await get().fetchDashboard();
+        } catch (error) {
+            get().addAlert(getApiErrorMessage(error, 'Unable to deactivate user.'), 'error');
+            throw error;
+        }
+    },
+
     createMachine: async ({ name, grid_x = 0, grid_y = 0 }) => {
         set({ creatingMachine: true });
 

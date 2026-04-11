@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import useAppStore from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
-import { UserPlus, Users } from 'lucide-react';
+import { UserPlus, Users, UserMinus } from 'lucide-react';
 
 const ROLE_SECTIONS = [
     { role: 'supervisor', title: 'Supervisors' },
@@ -31,8 +31,10 @@ const OperatorPanel = memo(function OperatorPanel() {
     const toggleDuty = useAppStore((state) => state.toggleDuty);
     const togglingDuty = useAppStore((state) => state.togglingDuty);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
+    const deactivateUser = useAppStore((state) => state.deactivateUser);
     const currentUser = useAuthStore((state) => state.user);
     const [error, setError] = useState('');
+    const [deactivatingId, setDeactivatingId] = useState('');
 
     const canManageUsers = currentUser?.role === 'owner' || currentUser?.role === 'supervisor';
     const operatorById = useMemo(() => Object.fromEntries(operators.map((o) => [o.id, o])), [operators]);
@@ -55,6 +57,17 @@ const OperatorPanel = memo(function OperatorPanel() {
             return { ...section, members };
         });
     }, [teamMembers, operatorById]);
+
+    const handleDeactivate = async (id, e) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to remove this user from the company?')) return;
+        setDeactivatingId(id);
+        try {
+            await deactivateUser(id);
+        } finally {
+            setDeactivatingId('');
+        }
+    };
 
     const counts = useMemo(() => ({
         supervisors: groupedMembers.find((g) => g.role === 'supervisor')?.members.length ?? 0,
@@ -145,9 +158,22 @@ const OperatorPanel = memo(function OperatorPanel() {
                                                     <p className="text-xs font-medium text-text-primary truncate">{member.full_name}</p>
                                                     <p className="text-[10px] text-text-muted truncate">{member.email}</p>
                                                 </div>
-                                                <div className="text-right">
-                                                    <span className={`text-[9px] font-mono uppercase tracking-wider ${sc.text}`}>{sc.label}</span>
-                                                    {isMe && <p className="mt-0.5 text-[9px] font-mono uppercase tracking-wider text-accent">You</p>}
+                                                <div className="text-right flex items-start justify-end gap-2">
+                                                    <div>
+                                                        <span className={`text-[9px] font-mono uppercase tracking-wider ${sc.text}`}>{sc.label}</span>
+                                                        {isMe && <p className="mt-0.5 text-[9px] font-mono uppercase tracking-wider text-accent">You</p>}
+                                                    </div>
+                                                    {canManageUsers && !isMe && (
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={(e) => handleDeactivate(member.id, e)}
+                                                            disabled={deactivatingId === member.id}
+                                                            className="text-text-muted hover:text-danger hover:bg-danger/10 p-1.5 rounded-lg transition-all opacity-50 hover:opacity-100"
+                                                            title="Remove User"
+                                                        >
+                                                            <UserMinus size={14} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                             {member.role === 'operator' ? (
