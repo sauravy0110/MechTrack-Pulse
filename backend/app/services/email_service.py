@@ -33,7 +33,12 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
     if not settings.RESEND_API_KEY:
         return False, "RESEND_API_KEY not configured"
 
+    # Free-tier Resend accounts MUST use onboarding@resend.dev as sender.
+    # Only use SMTP_FROM_EMAIL if it's a verified custom domain (not gmail/yahoo/etc).
     from_email = settings.SMTP_FROM_EMAIL or "onboarding@resend.dev"
+    free_domains = ("gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com")
+    if any(from_email.endswith(f"@{d}") for d in free_domains) or from_email == "noreply@mechtrackpulse.com":
+        from_email = "onboarding@resend.dev"
     from_name = settings.SMTP_FROM_NAME or "MechTrack Pulse"
 
     payload = {
