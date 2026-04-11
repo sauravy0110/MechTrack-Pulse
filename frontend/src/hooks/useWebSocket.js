@@ -12,6 +12,8 @@ export default function useWebSocket(companyId) {
     const reconnectTimeoutRef = useRef(null);
     const dashboardRefreshTimeoutRef = useRef(null);
     const connectRef = useRef(null);
+    const retryCountRef = useRef(0);
+    const MAX_RETRIES = 10;
 
     const updateTask = useAppStore((state) => state.updateTask);
     const updateMachine = useAppStore((state) => state.updateMachine);
@@ -40,11 +42,21 @@ export default function useWebSocket(companyId) {
             return;
         }
 
-        const configuredBase = import.meta.env.VITE_WS_BASE_URL?.replace(/\/$/, '');
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const hostBase = `${protocol}//${window.location.host}`;
-        const devBase = import.meta.env.DEV ? `${protocol}//127.0.0.1:8000` : hostBase;
-        const base = configuredBase || devBase;
+        // Derive WS URL from the API URL so it always points to the backend (Render),
+        // never the frontend host (Vercel doesn't support WebSockets).
+        const configuredWs = import.meta.env.VITE_WS_BASE_URL?.replace(/\/$/, '');
+        let base;
+        if (configuredWs) {
+            base = configuredWs;
+        } else if (import.meta.env.DEV) {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            base = `${protocol}//127.0.0.1:8000`;
+        } else {
+            // Production: convert VITE_API_URL (https://xxx.onrender.com/api/v1) → wss://xxx.onrender.com
+            const apiUrl = import.meta.env.VITE_API_URL || '';
+            const origin = apiUrl.replace(/\/api\/v1\/?$/, '');
+            base = origin.replace(/^https:/, 'wss:').replace(/^http:/, 'ws:');
+        }
         const url = `${base}/api/v1/ws/${companyId}?token=${encodeURIComponent(token)}`;
 
         try {
@@ -52,6 +64,7 @@ export default function useWebSocket(companyId) {
             wsRef.current = ws;
 
             ws.onopen = () => {
+                retryCountRef.current = 0;
                 useAppStore.setState({ wsStatus: 'connected' });
             };
 
@@ -96,23 +109,35 @@ export default function useWebSocket(companyId) {
                     return;
                 }
 
+                if (retryCountRef.current >= MAX_RETRIES) {
+                    useAppStore.setState({ wsStatus: 'disconnected' });
+                    console.warn('[WS] Max retries reached, giving up.');
+                    return;
+                }
+
+                retryCountRef.current += 1;
+                const delay = Math.min(3000 * Math.pow(2, retryCountRef.current - 1), 30000);
                 useAppStore.setState({ wsStatus: 'reconnecting' });
                 reconnectTimeoutRef.current = window.setTimeout(() => {
                     if (shouldReconnectRef.current && connectRef.current) {
                         connectRef.current();
                     }
-                }, 3000);
+                }, delay);
             };
 
             ws.onerror = () => {
                 ws.close();
             };
         } catch {
-            reconnectTimeoutRef.current = window.setTimeout(() => {
-                if (connectRef.current) {
-                    connectRef.current();
-                }
-            }, 5000);
+            if (retryCountRef.current < MAX_RETRIES) {
+                retryCountRef.current += 1;
+                const delay = Math.min(5000 * Math.pow(2, retryCountRef.current - 1), 30000);
+                reconnectTimeoutRef.current = window.setTimeout(() => {
+                    if (connectRef.current) {
+                        connectRef.current();
+                    }
+                }, delay);
+            }
         }
     }, [companyId, updateTask, updateMachine, updateOperator, updateUser, fetchDashboard, addAlert, scheduleDashboardRefresh]);
 
