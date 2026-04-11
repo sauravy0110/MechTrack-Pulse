@@ -648,13 +648,34 @@ function SceneSkeleton() {
 }
 
 function EmptyState() {
+    const [dismissed, setDismissed] = useState(false);
+    
+    // Auto-hide when modals are open so it doesn't overlap
+    const isAddMachineModalOpen = useAppStore((state) => state.isAddMachineModalOpen);
+    const isCreateTaskModalOpen = useAppStore((state) => state.isCreateTaskModalOpen);
+    const isAddUserModalOpen = useAppStore((state) => state.isAddUserModalOpen);
+    
     const openAddMachineModal = useAppStore((state) => state.openAddMachineModal);
     const userRole = useAuthStore((state) => state.user?.role);
     const canCreateMachine = userRole === 'owner' || userRole === 'supervisor';
 
+    if (dismissed || isAddMachineModalOpen || isCreateTaskModalOpen || isAddUserModalOpen) {
+        return null;
+    }
+
     return (
-        <Html center>
-            <div className="glass-strong rounded-2xl px-6 py-5 text-center shadow-2xl">
+        <Html center zIndexRange={[10, 0]}>
+            <div className="glass-strong rounded-2xl px-6 py-5 text-center shadow-2xl relative min-w-[250px]">
+                {/* Close Button */}
+                <button
+                    onClick={() => setDismissed(true)}
+                    className="absolute top-3 right-3 text-text-muted hover:text-text-primary transition-colors"
+                >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+
                 <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center mx-auto mb-3 border border-accent/20">
                     <svg className="w-5 h-5 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
@@ -666,9 +687,9 @@ function EmptyState() {
                     <button
                         type="button"
                         onClick={openAddMachineModal}
-                        className="mt-4 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold"
+                        className="mt-4 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold w-full"
                     >
-                        + Add Machine to start factory
+                        + Add Machine
                     </button>
                 ) : null}
             </div>
