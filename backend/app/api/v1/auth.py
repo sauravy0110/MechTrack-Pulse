@@ -8,6 +8,7 @@ Endpoints:
   POST /api/v1/auth/change-password → Change password
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
@@ -43,6 +44,7 @@ from app.core.security import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("app.auth")
 
 
 # ── Login ────────────────────────────────────────────────────
@@ -188,7 +190,9 @@ def forgot_password(request: Request, data: ForgotPasswordRequest, db: Session =
         # For simplicity, using a hardcoded placeholder for dev, or the origin header.
         origin = request.headers.get("origin", "http://localhost:5173")
         reset_link = f"{origin}/reset-password?token={token}"
-        send_password_reset_email(user_email=user.email, reset_link=reset_link)
+        email_sent, email_error = send_password_reset_email(user_email=user.email, reset_link=reset_link)
+        if not email_sent:
+            logger.warning("Password reset email was not delivered to %s: %s", user.email, email_error)
         
     return {"message": "If an account with that email exists, we sent a password reset link."}
 

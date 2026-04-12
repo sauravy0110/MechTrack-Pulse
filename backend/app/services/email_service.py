@@ -2,9 +2,10 @@
 MechTrack Pulse — Email Delivery Service
 
 Robust email delivery with automatic fallback chain:
-  1. Resend HTTP API  (works on Render free tier — no SMTP port needed)
-  2. SMTP             (works on paid hosting / local dev with Gmail App Password)
-  3. Console mock     (always works — prints email to server logs for dev)
+  1. Brevo HTTP API   (best free option for sending to any inbox)
+  2. Resend HTTP API  (works on Render free tier — no SMTP port needed)
+  3. SMTP             (works on paid hosting / local dev with Gmail App Password)
+  4. Console mock     (always works — prints email to server logs for dev)
 
 The service tries each method in order and falls through to the next
 on failure, so emails are never silently lost.
@@ -13,7 +14,6 @@ on failure, so emails are never silently lost.
 from email.message import EmailMessage
 import smtplib
 import ssl
-import json
 import logging
 
 import requests
@@ -28,18 +28,50 @@ logger = logging.getLogger("app.email")
 #  Transport Layer
 # ═══════════════════════════════════════════════════════════════
 
+def _clean_env_value(value: str | None) -> str | None:
+    """Normalize env values copied from dashboards with whitespace/quotes."""
+    if value is None:
+        return None
+    cleaned = value.strip().strip("\"'")
+    return cleaned or None
+
+
+def _resolve_sender_name(*candidates: str | None) -> str:
+    for candidate in candidates:
+        cleaned = _clean_env_value(candidate)
+        if cleaned:
+            return cleaned
+    return "MechTrack Pulse"
+
+
+def _extract_response_detail(resp: requests.Response) -> str:
+    try:
+        payload = resp.json()
+    except ValueError:
+        payload = None
+
+    if isinstance(payload, dict):
+        for key in ("message", "error", "detail", "code"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+    return (resp.text or "").strip()[:300]
+
+
 def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
     """Send via Resend HTTP API (port 443 — bypasses Render firewall)."""
-    if not settings.RESEND_API_KEY:
+    resend_api_key = _clean_env_value(settings.RESEND_API_KEY)
+    if not resend_api_key:
         return False, "RESEND_API_KEY not configured"
 
     # Free-tier Resend accounts MUST use onboarding@resend.dev as sender.
     # Only use SMTP_FROM_EMAIL if it's a verified custom domain (not gmail/yahoo/etc).
-    from_email = settings.SMTP_FROM_EMAIL or "onboarding@resend.dev"
+    from_email = _clean_env_value(settings.SMTP_FROM_EMAIL) or "onboarding@resend.dev"
     free_domains = ("gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com")
     if any(from_email.endswith(f"@{d}") for d in free_domains) or from_email == "noreply@mechtrackpulse.com":
         from_email = "onboarding@resend.dev"
-    from_name = settings.SMTP_FROM_NAME or "MechTrack Pulse"
+    from_name = _resolve_sender_name(settings.SMTP_FROM_NAME)
 
     payload = {
         "from": f"{from_name} <{from_email}>",
@@ -48,14 +80,14 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
         "text": body,
     }
     headers = {
-        "Authorization": f"Bearer {settings.RESEND_API_KEY.strip()}",
+        "Authorization": f"Bearer {resend_api_key}",
         "Content-Type": "application/json",
     }
 
     try:
         resp = requests.post(
             "https://api.resend.com/emails",
-            data=json.dumps(payload),
+            json=payload,
             headers=headers,
             timeout=15,
         )
@@ -63,7 +95,7 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
             logger.info("✅ Email sent via Resend API → %s", to)
             return True, ""
         else:
-            detail = resp.text[:300]
+            detail = _extract_response_detail(resp)
             logger.warning("Resend API rejected (%s): %s", resp.status_code, detail)
             return False, f"Resend {resp.status_code}: {detail}"
     except requests.RequestException as exc:
@@ -73,34 +105,37 @@ def _try_resend(to: str, subject: str, body: str) -> tuple[bool, str]:
 
 def _try_brevo(to: str, subject: str, body: str) -> tuple[bool, str]:
     """Send via Brevo HTTP API (allows sending to ANY email for free without custom domain)."""
-    if not settings.BREVO_API_KEY:
+    brevo_api_key = _clean_env_value(settings.BREVO_API_KEY)
+    if not brevo_api_key:
         return False, "BREVO_API_KEY not configured"
 
-    from_email = settings.SMTP_FROM_EMAIL or "noreply@mechtrackpulse.com"
-    from_name = settings.SMTP_FROM_NAME or "MechTrack Pulse"
+    from_email = _clean_env_value(settings.BREVO_SENDER_EMAIL) or _clean_env_value(settings.SMTP_FROM_EMAIL)
+    if not from_email:
+        return False, "BREVO_SENDER_EMAIL or SMTP_FROM_EMAIL must be configured"
+    from_name = _resolve_sender_name(settings.BREVO_SENDER_NAME, settings.SMTP_FROM_NAME)
 
     payload = {
         "sender": {
             "name": from_name,
-            "email": from_email
+            "email": from_email,
         },
         "to": [
-            {"email": to}
+            {"email": to},
         ],
         "subject": subject,
-        "textContent": body
+        "textContent": body,
     }
-    
+
     headers = {
         "accept": "application/json",
-        "api-key": settings.BREVO_API_KEY.strip(),
-        "content-type": "application/json"
+        "api-key": brevo_api_key,
+        "content-type": "application/json",
     }
 
     try:
         resp = requests.post(
             "https://api.brevo.com/v3/smtp/email",
-            data=json.dumps(payload),
+            json=payload,
             headers=headers,
             timeout=15,
         )
@@ -108,12 +143,13 @@ def _try_brevo(to: str, subject: str, body: str) -> tuple[bool, str]:
             logger.info("✅ Email sent via Brevo API → %s", to)
             return True, ""
         else:
-            detail = resp.text[:300]
+            detail = _extract_response_detail(resp)
             logger.warning("Brevo API rejected (%s): %s", resp.status_code, detail)
             return False, f"Brevo {resp.status_code}: {detail}"
     except requests.RequestException as exc:
         logger.warning("Brevo API network error: %s", exc)
         return False, str(exc)
+
 
 def _try_smtp(message: EmailMessage) -> tuple[bool, str]:
     """Send via traditional SMTP (requires open port 587/465)."""
@@ -146,7 +182,7 @@ def _try_smtp(message: EmailMessage) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _console_fallback(to: str, subject: str, body: str) -> tuple[bool, str]:
+def _console_fallback(to: str, subject: str, body: str) -> str:
     """Last resort: print the email to server logs so credentials are never lost."""
     print("\n" + "=" * 60)
     print("📧  CONSOLE EMAIL FALLBACK  (no transport succeeded)")
@@ -156,7 +192,7 @@ def _console_fallback(to: str, subject: str, body: str) -> tuple[bool, str]:
     print(body)
     print("=" * 60 + "\n")
     logger.info("Email printed to console (fallback) → %s", to)
-    return True, "Console fallback"
+    return "Console fallback only (message printed to server logs)"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -166,30 +202,40 @@ def _console_fallback(to: str, subject: str, body: str) -> tuple[bool, str]:
 def _dispatch(message: EmailMessage) -> tuple[bool, str]:
     """
     Try every available transport in priority order.
-    Returns (True, "") on success or (True, "Console fallback") if
-    only the console mock worked.
+    Returns (True, "") on a real transport success.
+    Returns (False, "...") when only the console fallback worked.
     """
     to = message["To"]
     subject = message["Subject"]
     body = message.get_content()
+    errors: list[str] = []
 
     # 1️⃣  Brevo HTTP API  (Best free option — can email anyone)
     ok, err = _try_brevo(to, subject, body)
     if ok:
         return True, ""
+    if err:
+        errors.append(err)
 
     # 2️⃣  Resend HTTP API  (Requires domain verification to email anyone)
     ok, err = _try_resend(to, subject, body)
     if ok:
         return True, ""
+    if err:
+        errors.append(err)
 
     # 3️⃣  SMTP  (Requires paid Render tier / unblocked port)
     ok, err = _try_smtp(message)
     if ok:
         return True, ""
+    if err:
+        errors.append(err)
 
     # 4️⃣  Console  (never fails)
-    return _console_fallback(to, subject, body)
+    errors.append(_console_fallback(to, subject, body))
+    combined_error = " | ".join(errors)
+    logger.warning("Email delivery failed for %s: %s", to, combined_error)
+    return False, combined_error
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -197,8 +243,12 @@ def _dispatch(message: EmailMessage) -> tuple[bool, str]:
 # ═══════════════════════════════════════════════════════════════
 
 def _from_header() -> str:
-    name = settings.SMTP_FROM_NAME or "MechTrack Pulse"
-    email = settings.SMTP_FROM_EMAIL or "onboarding@resend.dev"
+    name = _resolve_sender_name(settings.SMTP_FROM_NAME, settings.BREVO_SENDER_NAME)
+    email = (
+        _clean_env_value(settings.SMTP_FROM_EMAIL)
+        or _clean_env_value(settings.BREVO_SENDER_EMAIL)
+        or "onboarding@resend.dev"
+    )
     return f"{name} <{email}>"
 
 

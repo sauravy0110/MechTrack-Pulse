@@ -1,8 +1,9 @@
-import { memo, useMemo } from 'react';
-import { CheckCircle2, AlertTriangle, Play, MoreVertical } from 'lucide-react';
+import { memo, useMemo, useState } from 'react';
+import { CheckCircle2, AlertTriangle, Play, MoreVertical, ChevronDown, Clock3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
+import TaskWorkspacePanel from './TaskWorkspacePanel';
 
 const MotionDiv = motion.div;
 
@@ -16,7 +17,9 @@ const MobileTaskView = memo(function MobileTaskView() {
     const taskSort = useAppStore((state) => state.taskSort);
     const setTaskFilter = useAppStore((state) => state.setTaskFilter);
     const setTaskSort = useAppStore((state) => state.setTaskSort);
+    const setSelectedTask = useAppStore((state) => state.setSelectedTask);
     const userRole = useAuthStore((state) => state.user?.role);
+    const [expandedTaskId, setExpandedTaskId] = useState('');
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
@@ -25,10 +28,23 @@ const MobileTaskView = memo(function MobileTaskView() {
     const getMachineName = (id) => machines.find((m) => m.id === id)?.name || 'Unassigned Machine';
     const canStart = (status) => ['idle', 'queued', 'paused', 'delayed'].includes(status);
     const getPrimaryActionLabel = (status) => status === 'queued' ? 'Start Task' : status === 'paused' ? 'Resume Task' : status === 'delayed' ? 'Recover Task' : 'Start Procedure';
+    const formatDeadline = (value) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'No deadline';
+    const formatDuration = (value) => {
+        const total = Math.max(value || 0, 0);
+        const hours = Math.floor(total / 3600);
+        const minutes = Math.floor((total % 3600) / 60);
+        if (hours > 0) return `${hours}h ${minutes}m`;
+        return `${minutes}m`;
+    };
 
     const handleStatusUpdate = async (taskId, nextStatus) => {
         try { await updateTaskStatus(taskId, nextStatus); }
         catch (error) { addAlert(error.message || 'Unable to update.', 'error'); }
+    };
+
+    const toggleWorkspace = (task) => {
+        setSelectedTask(task);
+        setExpandedTaskId((current) => current === task.id ? '' : task.id);
     };
 
     return (
@@ -79,6 +95,20 @@ const MobileTaskView = memo(function MobileTaskView() {
                             </div>
                             <p className="text-xs text-text-muted leading-relaxed mb-6 line-clamp-2 italic">"{task.description || 'No description provided'}"</p>
 
+                            <div className="mb-4 grid grid-cols-2 gap-3 text-[11px] text-text-secondary">
+                                <div className="glass-card rounded-xl px-3 py-2">
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-text-muted">Deadline</p>
+                                    <p className="mt-1 text-text-primary">{formatDeadline(task.estimated_completion)}</p>
+                                </div>
+                                <div className="glass-card rounded-xl px-3 py-2">
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-text-muted">Logged time</p>
+                                    <p className="mt-1 text-text-primary inline-flex items-center gap-1">
+                                        <Clock3 size={12} />
+                                        {formatDuration(task.total_time_spent_seconds)}
+                                    </p>
+                                </div>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 {canControlWorkflow && canStart(task.status) ? (
                                     <button onClick={() => handleStatusUpdate(task.id, 'in_progress')}
@@ -104,6 +134,28 @@ const MobileTaskView = memo(function MobileTaskView() {
                                     </div>
                                 )}
                             </div>
+
+                            <button
+                                type="button"
+                                onClick={() => toggleWorkspace(task)}
+                                className="mt-4 w-full btn-ghost rounded-xl px-4 py-3 text-xs font-semibold inline-flex items-center justify-center gap-2"
+                            >
+                                Workspace
+                                <ChevronDown size={14} className={`transition-transform ${expandedTaskId === task.id ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                                {expandedTaskId === task.id && (
+                                    <MotionDiv
+                                        initial={{ opacity: 0, height: 0 }}
+                                        animate={{ opacity: 1, height: 'auto' }}
+                                        exit={{ opacity: 0, height: 0 }}
+                                        className="mt-4 overflow-hidden"
+                                    >
+                                        <TaskWorkspacePanel task={task} role={userRole} compact />
+                                    </MotionDiv>
+                                )}
+                            </AnimatePresence>
                         </div>
                         {task.status === 'in_progress' && (
                             <div className="absolute bottom-0 left-0 right-0 h-1 bg-bg-primary">

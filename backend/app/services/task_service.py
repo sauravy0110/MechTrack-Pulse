@@ -215,6 +215,19 @@ def get_task(db: Session, company_id: UUID, task_id: UUID) -> Task | None:
     ).first()
 
 
+def user_can_access_task(task: Task | None, user: User) -> bool:
+    """Check role-scoped task visibility without duplicating route logic."""
+    if task is None:
+        return False
+    if task.company_id != user.company_id:
+        return False
+    if user.role == "operator":
+        return task.assigned_to == user.id
+    if user.role == "client":
+        return task.client_id == user.id
+    return True
+
+
 def update_task_status(
     db: Session,
     company_id: UUID,
@@ -414,3 +427,34 @@ def get_task_logs(db: Session, company_id: UUID, task_id: UUID) -> list[TaskLog]
     return db.query(TaskLog).filter(
         TaskLog.task_id == task_id
     ).order_by(TaskLog.created_at.desc()).all()
+
+
+def add_task_note(
+    db: Session,
+    company_id: UUID,
+    task_id: UUID,
+    user: User,
+    note: str,
+) -> tuple[TaskLog | None, str]:
+    """Attach a free-form note to a task for execution updates and client communication."""
+    task = get_task(db, company_id, task_id)
+    if not task:
+        return None, "Task not found"
+
+    if not user_can_access_task(task, user):
+        return None, "You do not have access to this task"
+
+    cleaned_note = note.strip()
+    if len(cleaned_note) < 2:
+        return None, "Note must be at least 2 characters"
+
+    entry = TaskLog(
+        task_id=task.id,
+        user_id=user.id,
+        action="note_added",
+        details=cleaned_note,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return entry, ""

@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from 'react';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
 import { Plus, X, Zap } from 'lucide-react';
+import OwnerBusinessPanel from './OwnerBusinessPanel';
+import TaskWorkspacePanel from './TaskWorkspacePanel';
 
 const PRIORITY_COLORS = { critical: 'text-danger', high: 'text-warning', medium: 'text-accent', low: 'text-text-muted' };
 const FILTER_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'delayed', label: 'Delayed' }];
@@ -98,6 +100,10 @@ const RightPanel = memo(function RightPanel() {
         catch (error) { setStatusError(error.message || 'Unable to update.'); }
         finally { setStatusUpdating(''); }
     };
+
+    if (!selectedMachine && userRole === 'owner') {
+        return <OwnerBusinessPanel />;
+    }
 
     if (selectedMachine) {
         return (
@@ -234,6 +240,10 @@ const RightPanel = memo(function RightPanel() {
                                     {statusError && <p className="text-[10px] text-danger">{statusError}</p>}
                                 </div>
                             )}
+
+                            <div className="mt-4 border-t border-border/60 pt-4">
+                                <TaskWorkspacePanel task={selectedTask} role={userRole} compact />
+                            </div>
                         </div>
                     )}
                 </div>

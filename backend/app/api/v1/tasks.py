@@ -31,10 +31,14 @@ from app.schemas.task import (
     AssignTaskRequest,
     CreateTaskRequest,
     TaskLogResponse,
+    TaskNoteRequest,
+    TaskNoteResponse,
     TaskResponse,
     UpdateTaskRequest,
 )
+from app.services.audit_service import record_audit_log
 from app.services.task_service import (
+    add_task_note,
     assign_task,
     create_task,
     get_task,
@@ -42,6 +46,7 @@ from app.services.task_service import (
     list_tasks,
     update_task,
     update_task_status,
+    user_can_access_task,
 )
 from app.services.task_queue import dequeue_task, peek_queue, queue_size
 from app.services.ai_action_engine import evaluate_operator_load
@@ -95,6 +100,20 @@ def _operator_to_payload(operator: User) -> dict:
     }
 
 
+def _get_accessible_task_or_404(
+    db: Session,
+    company_id: UUID,
+    current_user: User,
+    task_id: UUID,
+):
+    task = get_task(db, company_id, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not user_can_access_task(task, current_user):
+        raise HTTPException(status_code=403, detail="You do not have access to this task")
+    return task
+
+
 # ── Create Task ──────────────────────────────────────────────
 
 @router.post("/", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -121,9 +140,34 @@ async def create_task_route(
         raise HTTPException(status_code=400, detail=error)
     
     # Broadcast to all connected users in company
-    from app.api.v1.websocket import broadcast_operator_update, broadcast_task_update
+    from app.api.v1.websocket import (
+        broadcast_notification,
+        broadcast_operator_update,
+        broadcast_task_update,
+    )
     resp = _task_to_response(task)
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="task.created",
+        resource_type="task",
+        resource_id=task.id,
+        details={
+            "title": task.title,
+            "priority": task.priority,
+            "assigned_to": str(task.assigned_to) if task.assigned_to else None,
+            "machine_id": str(task.machine_id) if task.machine_id else None,
+        },
+    )
+    db.commit()
     background_tasks.add_task(broadcast_task_update, current_user.company_id, resp.model_dump())
+    background_tasks.add_task(
+        broadcast_notification,
+        current_user.company_id,
+        f"Task '{task.title}' created with {task.priority} priority.",
+        "info",
+    )
 
     if task.assigned_to:
         operator = db.query(User).filter(User.id == task.assigned_to).first()
@@ -189,17 +233,7 @@ def get_task_route(
     current_user: User = Depends(require_password_changed),
 ):
     """Get a specific task."""
-    task = get_task(db, current_user.company_id, task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    # Operators can only view their own tasks
-    if current_user.role == "operator" and task.assigned_to != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view your own tasks")
-
-    if current_user.role == "client" and task.client_id != current_user.id:
-        raise HTTPException(status_code=403, detail="You can only view your own jobs")
-
+    task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
     return _task_to_response(task)
 
 
@@ -217,6 +251,16 @@ def update_task_route(
     task, error = update_task(db, current_user.company_id, task_id, current_user.id, updates)
     if error:
         raise HTTPException(status_code=400, detail=error)
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="task.updated",
+        resource_type="task",
+        resource_id=task.id,
+        details={"fields": list(updates.keys())},
+    )
+    db.commit()
     return _task_to_response(task)
 
 
@@ -243,14 +287,38 @@ async def update_task_status_route(
         if not task or task.assigned_to != current_user.id:
             raise HTTPException(status_code=403, detail="You can only update your own tasks")
 
+    previous_task = get_task(db, current_user.company_id, task_id)
+    previous_status = previous_task.status if previous_task else None
     task, error = update_task_status(db, current_user.company_id, task_id, new_status, current_user.id)
     if error:
         raise HTTPException(status_code=400, detail=error)
         
     # Broadcast update
-    from app.api.v1.websocket import broadcast_operator_update, broadcast_task_update
+    from app.api.v1.websocket import (
+        broadcast_notification,
+        broadcast_operator_update,
+        broadcast_task_update,
+    )
     resp = _task_to_response(task)
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action=f"task.status.{new_status}",
+        resource_type="task",
+        resource_id=task.id,
+        details={"previous_status": previous_status, "new_status": new_status},
+    )
+    db.commit()
     background_tasks.add_task(broadcast_task_update, current_user.company_id, resp.model_dump())
+    if new_status in {"delayed", "completed", "in_progress"}:
+        severity = "warning" if new_status == "delayed" else "success" if new_status == "completed" else "info"
+        background_tasks.add_task(
+            broadcast_notification,
+            current_user.company_id,
+            f"Task '{task.title}' moved to {new_status.replace('_', ' ')}.",
+            severity,
+        )
 
     if task.assigned_to:
         operator = db.query(User).filter(User.id == task.assigned_to).first()
@@ -288,9 +356,32 @@ async def assign_task_route(
         raise HTTPException(status_code=400, detail=error)
         
     # Broadcast update
-    from app.api.v1.websocket import broadcast_operator_update, broadcast_task_update
+    from app.api.v1.websocket import (
+        broadcast_notification,
+        broadcast_operator_update,
+        broadcast_task_update,
+    )
     resp = _task_to_response(task)
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="task.assigned",
+        resource_type="task",
+        resource_id=task.id,
+        details={
+            "assigned_to": str(request.assigned_to),
+            "previous_assignee": str(old_assignee_id) if old_assignee_id else None,
+        },
+    )
+    db.commit()
     background_tasks.add_task(broadcast_task_update, current_user.company_id, resp.model_dump())
+    background_tasks.add_task(
+        broadcast_notification,
+        current_user.company_id,
+        f"Task '{task.title}' assigned to a new operator.",
+        "info",
+    )
 
     affected_operator_ids = {request.assigned_to}
     if old_assignee_id:
@@ -317,9 +408,10 @@ async def assign_task_route(
 def get_task_logs_route(
     task_id: UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(RequirePermission(Permission.VIEW_DASHBOARD)),
+    current_user: User = Depends(require_password_changed),
 ):
     """Get audit trail for a task."""
+    _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
     logs = get_task_logs(db, current_user.company_id, task_id)
     return [
         TaskLogResponse(
@@ -333,6 +425,53 @@ def get_task_logs_route(
         )
         for log in logs
     ]
+
+
+@router.post("/{task_id}/notes", response_model=TaskNoteResponse, status_code=status.HTTP_201_CREATED)
+async def add_task_note_route(
+    task_id: UUID,
+    request: TaskNoteRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Add a note to a task for updates, blockers, and client communication."""
+    task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
+    note_entry, error = add_task_note(
+        db,
+        current_user.company_id,
+        task_id,
+        current_user,
+        request.note,
+    )
+    if error or not note_entry:
+        raise HTTPException(status_code=400, detail=error or "Unable to add note")
+
+    from app.api.v1.websocket import broadcast_notification
+
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="task.note_added",
+        resource_type="task",
+        resource_id=task.id,
+        details={"note_preview": request.note[:120]},
+    )
+    db.commit()
+    background_tasks.add_task(
+        broadcast_notification,
+        current_user.company_id,
+        f"{current_user.full_name} added a note on '{task.title}'.",
+        "info",
+    )
+    return TaskNoteResponse(
+        id=str(note_entry.id),
+        task_id=str(task.id),
+        note=note_entry.details or "",
+        user_id=str(note_entry.user_id),
+        created_at=note_entry.created_at,
+    )
 
 
 # ── Task Queue ───────────────────────────────────────────────

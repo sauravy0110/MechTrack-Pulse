@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import api from '../api/client';
 import { playAlertSound } from '../utils/audio';
 import { getApiErrorMessage } from '../utils/apiError';
+import useAuthStore from './authStore';
 
 export const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 export const ACTIVE_TASK_STATUSES = new Set(['idle', 'queued', 'in_progress', 'paused']);
@@ -65,13 +66,39 @@ export function sortTasks(tasks, sort) {
     );
 }
 
+function getStoredUserRole() {
+    try {
+        return JSON.parse(localStorage.getItem('user') || 'null')?.role || null;
+    } catch {
+        return null;
+    }
+}
+
+function shouldRefreshOwnerBusiness() {
+    return getStoredUserRole() === 'owner';
+}
+
+function triggerBrowserDownload(blob, filename) {
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+}
+
 const useAppStore = create((set, get) => ({
     // Data
     users: [],
     machines: [],
     tasks: [],
     dashboard: null,
+    ownerBusiness: null,
+    reports: [],
     insights: [],
+    aiProviderStatus: null,
     selectedMachine: null,
     selectedTask: null,
     wsStatus: 'disconnected', // 'connected' | 'disconnected' | 'reconnecting'
@@ -80,15 +107,20 @@ const useAppStore = create((set, get) => ({
     loadingMachines: false,
     loadingTasks: false,
     loadingUsers: false,
+    loadingOwnerBusiness: false,
+    loadingReports: false,
     creatingMachine: false,
     creatingTask: false,
     creatingUser: false,
+    savingCompanyProfile: false,
+    generatingReport: false,
     togglingDuty: false,
 
     // UI state
     isAddMachineModalOpen: false,
     isCreateTaskModalOpen: false,
     isAddUserModalOpen: false,
+    isGlobalAIModalOpen: false,
     createTaskMachineId: '',
     taskFilter: 'all',
     taskSort: 'time',
@@ -130,6 +162,28 @@ const useAppStore = create((set, get) => ({
         }
     },
 
+    fetchOwnerBusinessOverview: async () => {
+        set({ loadingOwnerBusiness: true });
+        try {
+            const { data } = await api.get('/owner/business-overview');
+            set({ ownerBusiness: data, loadingOwnerBusiness: false });
+        } catch (error) {
+            void error;
+            set({ loadingOwnerBusiness: false });
+        }
+    },
+
+    fetchReports: async () => {
+        set({ loadingReports: true });
+        try {
+            const { data } = await api.get('/reports/');
+            set({ reports: Array.isArray(data) ? data : [], loadingReports: false });
+        } catch (error) {
+            void error;
+            set({ loadingReports: false });
+        }
+    },
+
     fetchInsights: async () => {
         try {
             const { data } = await api.get('/ai/insights');
@@ -139,9 +193,33 @@ const useAppStore = create((set, get) => ({
         }
     },
 
+    fetchAIProviderStatus: async () => {
+        try {
+            const { data } = await api.get('/ai/provider-status');
+            set({ aiProviderStatus: data });
+        } catch (error) {
+            void error;
+            set({
+                aiProviderStatus: {
+                    enabled: false,
+                    configured: false,
+                    error: getApiErrorMessage(error, 'AI unavailable'),
+                },
+            });
+        }
+    },
+
     fetchAll: async () => {
-        const { fetchMachines, fetchTasks, fetchDashboard, fetchInsights } = get();
-        await Promise.all([fetchMachines(), fetchTasks(), fetchDashboard(), fetchInsights()]);
+        const { fetchMachines, fetchTasks, fetchDashboard, fetchInsights, fetchOwnerBusinessOverview, fetchReports, fetchAIProviderStatus } = get();
+        await Promise.all([
+            fetchMachines(),
+            fetchTasks(),
+            fetchDashboard(),
+            fetchInsights(),
+            fetchAIProviderStatus(),
+            shouldRefreshOwnerBusiness() ? fetchOwnerBusinessOverview() : Promise.resolve(),
+            shouldRefreshOwnerBusiness() ? fetchReports() : Promise.resolve(),
+        ]);
     },
 
     // ── Operators ───────────────────────────────────────
@@ -168,21 +246,37 @@ const useAppStore = create((set, get) => ({
     },
     updateUser: (updatedUser) => {
         set((state) => ({
-            users: state.users.some((user) => user.id === updatedUser.id)
-                ? state.users.map((user) =>
-                    user.id === updatedUser.id ? normalizeUser({ ...user, ...updatedUser }) : user
-                )
-                : [...state.users, normalizeUser(updatedUser)],
-            operators: updatedUser.role === 'operator' || state.operators.some((operator) => operator.id === updatedUser.id)
-                ? (
-                    state.operators.some((operator) => operator.id === updatedUser.id)
-                        ? state.operators.map((operator) =>
-                            operator.id === updatedUser.id ? normalizeOperator({ ...operator, ...updatedUser }) : operator
+            users: updatedUser.is_active === false
+                ? state.users.filter((user) => user.id !== updatedUser.id)
+                : (
+                    state.users.some((user) => user.id === updatedUser.id)
+                        ? state.users.map((user) =>
+                            user.id === updatedUser.id ? normalizeUser({ ...user, ...updatedUser }) : user
                         )
-                        : [...state.operators, normalizeOperator(updatedUser)]
-                )
-                : state.operators,
+                        : [...state.users, normalizeUser(updatedUser)]
+                ),
+            operators: updatedUser.is_active === false
+                ? state.operators.filter((operator) => operator.id !== updatedUser.id)
+                : (
+                    updatedUser.role === 'operator' || state.operators.some((operator) => operator.id === updatedUser.id)
+                        ? (
+                            state.operators.some((operator) => operator.id === updatedUser.id)
+                                ? state.operators.map((operator) =>
+                                    operator.id === updatedUser.id ? normalizeOperator({ ...operator, ...updatedUser }) : operator
+                                )
+                                : [...state.operators, normalizeOperator(updatedUser)]
+                        )
+                        : state.operators
+                ),
         }));
+
+        const authUser = useAuthStore.getState().user;
+        if (authUser?.id === updatedUser.id && updatedUser.is_active === false) {
+            get().addAlert('Your access has been removed. Signing out.', 'error');
+            window.setTimeout(() => {
+                useAuthStore.getState().logout();
+            }, 250);
+        }
     },
 
     // Additional state for Product Experience
@@ -197,6 +291,8 @@ const useAppStore = create((set, get) => ({
     closeCreateTaskModal: () => set({ isCreateTaskModalOpen: false, createTaskMachineId: '' }),
     openAddUserModal: () => set({ isAddUserModalOpen: true }),
     closeAddUserModal: () => set({ isAddUserModalOpen: false }),
+    openGlobalAIModal: () => set({ isGlobalAIModalOpen: true }),
+    closeGlobalAIModal: () => set({ isGlobalAIModalOpen: false }),
     setTaskFilter: (taskFilter) => set({ taskFilter }),
     setTaskSort: (taskSort) => set({ taskSort }),
     setSelectedMachine: (machine) => set((state) => ({
@@ -301,7 +397,10 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`${data.role.charAt(0).toUpperCase() + data.role.slice(1)} "${data.full_name}" added successfully.`, 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
 
             return data;
         } catch (error) {
@@ -318,7 +417,10 @@ const useAppStore = create((set, get) => ({
                 operators: state.operators.filter((op) => op.id !== userId)
             }));
             get().addAlert('User deactivated successfully.', 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
         } catch (error) {
             get().addAlert(getApiErrorMessage(error, 'Unable to deactivate user.'), 'error');
             throw error;
@@ -347,7 +449,10 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`Machine "${data.name}" created successfully.`, 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
 
             return data;
         } catch (error) {
@@ -356,14 +461,17 @@ const useAppStore = create((set, get) => ({
         }
     },
 
-    createTask: async ({ title, machine_id, priority }) => {
+    createTask: async ({ title, description, machine_id, priority, client_id, estimated_completion }) => {
         set({ creatingTask: true });
 
         try {
             const { data } = await api.post('/tasks/', {
                 title,
+                description: description || null,
                 machine_id: machine_id || null,
                 priority,
+                client_id: client_id || null,
+                estimated_completion: estimated_completion || null,
             });
 
             const machine = get().machines.find((item) => item.id === data.machine_id) || null;
@@ -378,7 +486,10 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`Task "${data.title}" created successfully.`, 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
             return data;
         } catch (error) {
             set({ creatingTask: false });
@@ -393,7 +504,11 @@ const useAppStore = create((set, get) => ({
             });
             get().updateTask(data);
             get().addAlert(`Task "${data.title}" assigned successfully.`, 'success');
-            await Promise.all([get().fetchDashboard(), get().fetchOperators()]);
+            await Promise.all([
+                get().fetchDashboard(),
+                get().fetchOperators(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
             return data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Unable to assign that task right now.'));
@@ -406,7 +521,11 @@ const useAppStore = create((set, get) => ({
                 params: { new_status: newStatus },
             });
             get().updateTask(data);
-            await Promise.all([get().fetchDashboard(), get().fetchOperators()]);
+            await Promise.all([
+                get().fetchDashboard(),
+                get().fetchOperators(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
             return data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Unable to update task status right now.'));
@@ -423,12 +542,71 @@ const useAppStore = create((set, get) => ({
                 last_active_at: data.last_active_at,
             });
             get().addAlert(data.message || 'Duty status updated.', 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
             return data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Unable to toggle duty right now.'));
         } finally {
             set({ togglingDuty: false });
+        }
+    },
+
+    updateCompanyProfile: async (payload) => {
+        set({ savingCompanyProfile: true });
+        try {
+            const { data } = await api.patch('/owner/company-profile', payload);
+            set((state) => ({
+                savingCompanyProfile: false,
+                ownerBusiness: state.ownerBusiness ? { ...state.ownerBusiness, company: data } : state.ownerBusiness,
+            }));
+            get().addAlert('Company profile updated successfully.', 'success');
+            await Promise.all([get().fetchOwnerBusinessOverview(), get().fetchDashboard()]);
+            return data;
+        } catch (error) {
+            set({ savingCompanyProfile: false });
+            throw new Error(getApiErrorMessage(error, 'Unable to update company profile right now.'));
+        }
+    },
+
+    generateReport: async ({ title, report_type, period_start, period_end }) => {
+        set({ generatingReport: true });
+        try {
+            const { data } = await api.post('/reports/generate', {
+                title,
+                report_type,
+                period_start,
+                period_end,
+            });
+            get().addAlert(`Report "${data.title}" generated successfully.`, 'success');
+            await Promise.all([get().fetchReports(), get().fetchOwnerBusinessOverview()]);
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to generate report right now.'));
+        } finally {
+            set({ generatingReport: false });
+        }
+    },
+
+    downloadOwnerExport: async (format) => {
+        const exportConfig = format === 'pdf'
+            ? {
+                endpoint: '/owner/export/pdf',
+                filename: 'mechtrack_report.pdf',
+            }
+            : {
+                endpoint: '/owner/export/csv',
+                filename: 'mechtrack_export.csv',
+            };
+
+        try {
+            const response = await api.get(exportConfig.endpoint, { responseType: 'blob' });
+            triggerBrowserDownload(response.data, exportConfig.filename);
+            get().addAlert(`${format.toUpperCase()} export downloaded.`, 'success');
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, `Unable to download ${format.toUpperCase()} export right now.`));
         }
     },
 

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import require_roles
 from app.db.database import get_db
 from app.models.user import User
+from app.services.audit_service import record_audit_log
 from app.services.report_service import generate_report, list_reports
 
 router = APIRouter()
@@ -46,6 +47,21 @@ def generate_report_route(
         period_start=request.period_start,
         period_end=request.period_end,
     )
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="report.generated",
+        resource_type="report",
+        details={
+            "report_id": result.get("report_id"),
+            "title": request.title,
+            "report_type": request.report_type,
+            "period_start": request.period_start.isoformat(),
+            "period_end": request.period_end.isoformat(),
+        },
+    )
+    db.commit()
     return result
 
 

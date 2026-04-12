@@ -73,6 +73,29 @@ class TaskLogResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TaskNoteRequest(BaseModel):
+    note: str = Field(..., min_length=2, max_length=2000)
+
+
+class TaskNoteResponse(BaseModel):
+    id: str
+    task_id: str
+    note: str
+    user_id: str
+    created_at: datetime
+
+
+class TaskMediaResponse(BaseModel):
+    id: str
+    task_id: str
+    media_url: str
+    media_type: str
+    file_name: str | None = None
+    file_size_bytes: int | None = None
+    uploaded_by: str
+    uploaded_at: datetime
+
+
 # ── Assign Task ──────────────────────────────────────────────
 
 class AssignTaskRequest(BaseModel):

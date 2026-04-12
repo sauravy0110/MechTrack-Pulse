@@ -58,3 +58,4 @@ def get_db():
         yield db
     finally:
         db.close()
+print("DB URL BEING USED:", settings.DATABASE_URL)

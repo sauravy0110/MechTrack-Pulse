@@ -6,6 +6,7 @@ import useWebSocket from '../hooks/useWebSocket';
 import AddMachineModal from '../components/AddMachineModal';
 import AddUserModal from '../components/AddUserModal';
 import CreateTaskModal from '../components/CreateTaskModal';
+import GlobalAIAssistantModal from '../components/GlobalAIAssistantModal';
 import TopBar from '../components/TopBar';
 import LeftPanel from '../components/LeftPanel';
 import RightPanel from '../components/RightPanel';
@@ -128,6 +129,7 @@ export default function DashboardPage() {
     const isAddMachineModalOpen = useAppStore((s) => s.isAddMachineModalOpen);
     const isCreateTaskModalOpen = useAppStore((s) => s.isCreateTaskModalOpen);
     const isAddUserModalOpen = useAppStore((s) => s.isAddUserModalOpen);
+    const isGlobalAIModalOpen = useAppStore((s) => s.isGlobalAIModalOpen);
     const createTaskMachineId = useAppStore((s) => s.createTaskMachineId);
     const [isTablet, setIsTablet] = useState(false);
     const [isMobile, setIsMobile] = useState(false);
@@ -152,19 +154,29 @@ export default function DashboardPage() {
         const store = useAppStore.getState();
         store.fetchTasks();
         store.fetchMachines();
+        store.fetchAIProviderStatus();
         if (userRole === 'owner' || userRole === 'supervisor') {
             store.fetchUsers();
             store.fetchOperators();
             store.fetchDashboard();
             store.fetchInsights();
+            if (userRole === 'owner') {
+                store.fetchOwnerBusinessOverview();
+                store.fetchReports();
+            }
         } else if (userRole === 'operator') {
             store.fetchOperators();
         }
         const interval = setInterval(() => {
             const state = useAppStore.getState();
+            state.fetchAIProviderStatus();
             if (userRole === 'owner' || userRole === 'supervisor') {
                 state.fetchDashboard();
                 state.fetchInsights();
+                if (userRole === 'owner') {
+                    state.fetchOwnerBusinessOverview();
+                    state.fetchReports();
+                }
             }
             if (userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator') {
                 state.fetchOperators();
@@ -183,6 +195,7 @@ export default function DashboardPage() {
                 {isAddMachineModalOpen && <AddMachineModal />}
                 {isAddUserModalOpen && <AddUserModal />}
                 {isCreateTaskModalOpen && <CreateTaskModal key={createTaskMachineId || 'new-task'} />}
+                {isGlobalAIModalOpen && <GlobalAIAssistantModal />}
             </AnimatePresence>
 
             <div className="flex-1 flex overflow-hidden">

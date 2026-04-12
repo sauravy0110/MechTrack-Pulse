@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     # ── HTTP Email Delivery (Render Free Tier Bypass) ────────
     RESEND_API_KEY: str | None = None
     BREVO_API_KEY: str | None = None
+    BREVO_SENDER_EMAIL: str | None = None
+    BREVO_SENDER_NAME: str | None = None
+
+    # ── External AI (OpenRouter) ──────────────────────────────
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_SITE_URL: str = "https://mech-track-pulse.vercel.app"
+    OPENROUTER_APP_TITLE: str = "MechTrack Pulse"
+    OPENROUTER_MODEL_GENERAL: str = "meta-llama/llama-3.3-70b-instruct:free"
+    OPENROUTER_MODEL_FAST: str = "mistralai/mistral-small-3.1-24b-instruct:free"
+    OPENROUTER_MODEL_CODER: str = "qwen/qwen3-coder:free"
+    OPENROUTER_MODEL_REASONING: str = "openrouter/free"
+    OPENROUTER_TIMEOUT_SECONDS: int = 30
 
     model_config = {
         "env_file": ".env",

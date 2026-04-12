@@ -11,19 +11,56 @@ Endpoints:
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_roles, require_password_changed
 from app.db.database import get_db
 from app.models.ai_insight import AIInsight
+from app.models.task import Task
 from app.models.user import User
 from app.services.ai_service import (
+    answer_company_question,
     calculate_operator_performance,
+    generate_instruction_draft,
     generate_insights,
+    get_client_progress_summary,
+    get_owner_intelligence,
+    get_supervisor_intelligence,
+    get_task_assistant,
     predict_delay,
 )
+from app.services.openrouter_service import get_openrouter_status
+from app.services.task_service import user_can_access_task
 
 router = APIRouter()
+
+
+class GenerateInstructionsRequest(BaseModel):
+    title: str = Field(..., min_length=2, max_length=255)
+    description: str | None = None
+    machine_name: str | None = Field(None, max_length=255)
+    priority: str = Field("medium", pattern="^(low|medium|high|critical)$")
+
+
+class AssistantQuestionRequest(BaseModel):
+    question: str = Field(..., min_length=3, max_length=1000)
+
+
+def _get_scoped_task_or_404(
+    db: Session,
+    current_user: User,
+    task_id: UUID,
+) -> Task:
+    task = db.query(Task).filter(
+        Task.id == task_id,
+        Task.company_id == current_user.company_id,
+    ).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not user_can_access_task(task, current_user):
+        raise HTTPException(status_code=403, detail="You do not have access to this task")
+    return task
 
 
 @router.post("/predict-delay/{task_id}")
@@ -109,6 +146,100 @@ def mark_insight_read(
     insight.is_read = True
     db.commit()
     return {"message": "Insight marked as read"}
+
+
+@router.get("/task-assistant/{task_id}")
+def get_task_assistant_route(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Operator-friendly task guidance and execution coaching."""
+    _get_scoped_task_or_404(db, current_user, task_id)
+    result = get_task_assistant(db, current_user.company_id, task_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.post("/generate-instructions")
+def generate_instructions_route(
+    request: GenerateInstructionsRequest,
+    current_user: User = Depends(require_roles("owner", "supervisor")),
+):
+    """Generate a structured instruction draft for new or existing tasks."""
+    return generate_instruction_draft(
+        request.title,
+        machine_name=request.machine_name,
+        priority=request.priority,
+        description=request.description,
+    )
+
+
+@router.get("/supervisor-intelligence")
+def get_supervisor_intelligence_route(
+    task_id: UUID | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("owner", "supervisor")),
+):
+    """Control-room intelligence for live monitoring, assignment, and delay risk."""
+    if task_id:
+        _get_scoped_task_or_404(db, current_user, task_id)
+    return get_supervisor_intelligence(db, current_user.company_id, task_id=task_id)
+
+
+@router.get("/owner-intelligence")
+def get_owner_intelligence_route(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("owner")),
+):
+    """Business-facing predictive analytics and optimization guidance."""
+    return get_owner_intelligence(db, current_user.company_id)
+
+
+@router.get("/client-summary/{task_id}")
+def get_client_summary_route(
+    task_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Client-friendly progress explanation for a single job."""
+    task = _get_scoped_task_or_404(db, current_user, task_id)
+    if current_user.role == "client":
+        result = get_client_progress_summary(db, current_user.company_id, task_id, current_user.id)
+    else:
+        if not task.client_id:
+            raise HTTPException(status_code=400, detail="Task is not linked to a client")
+        result = get_client_progress_summary(db, current_user.company_id, task_id, task.client_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.post("/assistant")
+def ask_global_assistant(
+    request: AssistantQuestionRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Global AI assistant for answering operations and business questions."""
+    return answer_company_question(db, current_user.company_id, request.question)
+
+
+@router.get("/provider-status")
+def get_ai_provider_status(
+    current_user: User = Depends(require_password_changed),
+):
+    """Expose whether OpenRouter is configured and which models are pinned."""
+    status = get_openrouter_status()
+    return {
+        "enabled": status.get("enabled", False),
+        "configured": status.get("configured", False),
+        "base_url": status.get("base_url"),
+        "models": status.get("models", {}),
+        "error": status.get("error"),
+    }
+
 
 @router.get("/machine-risks")
 def get_machine_risks(

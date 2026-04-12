@@ -24,6 +24,7 @@ from app.core.permissions import Permission, can_create_role
 from app.db.database import get_db
 from app.models.user import User
 from app.api.v1.websocket import broadcast_user_update
+from app.services.audit_service import record_audit_log
 from app.schemas.user import (
     CreateUserRequest,
     CreateUserResponse,
@@ -91,6 +92,16 @@ def create_user_route(
     if error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="user.created",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": user.email, "role": user.role},
+    )
+    db.commit()
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
@@ -159,6 +170,16 @@ def update_user_route(
     if error:
         raise HTTPException(status_code=400, detail=error)
 
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="user.updated",
+        resource_type="user",
+        resource_id=user.id,
+        details={"fields": list(updates.keys())},
+    )
+    db.commit()
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
@@ -173,11 +194,32 @@ def update_user_route(
 @router.delete("/{user_id}")
 def deactivate_user_route(
     user_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission(Permission.DELETE_USER)),
 ):
     """Soft-delete a user. Decrements subscription usage counter."""
+    user = get_user(db, current_user.company_id, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     success, message = deactivate_user(db, current_user.company_id, user_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
+
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="user.deactivated",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": user.email, "role": user.role},
+    )
+    db.commit()
+    background_tasks.add_task(
+        broadcast_user_update,
+        current_user.company_id,
+        _user_to_response(user).model_dump(),
+    )
     return {"message": message}

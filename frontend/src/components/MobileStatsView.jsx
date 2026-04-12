@@ -1,7 +1,9 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Zap, AlertCircle } from 'lucide-react';
 import useAppStore from '../stores/appStore';
+import useAuthStore from '../stores/authStore';
 import { motion } from 'framer-motion';
+import api from '../api/client';
 
 const StatCard = ({ icon, label, value, color, delay }) => {
     const IconComponent = icon;
@@ -24,6 +26,84 @@ const StatCard = ({ icon, label, value, color, delay }) => {
 const MobileStatsView = memo(function MobileStatsView() {
     const dashboard = useAppStore((s) => s.dashboard);
     const machines = useAppStore((s) => s.machines);
+    const tasks = useAppStore((s) => s.tasks);
+    const ownerBusiness = useAppStore((s) => s.ownerBusiness);
+    const userRole = useAuthStore((s) => s.user?.role);
+    const [clientReports, setClientReports] = useState([]);
+    const [ownerIntelligence, setOwnerIntelligence] = useState(null);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadRoleSnapshots() {
+            try {
+                if (userRole === 'client') {
+                    const { data } = await api.get('/client/reports');
+                    if (!cancelled) setClientReports(Array.isArray(data) ? data : []);
+                } else if (userRole === 'owner') {
+                    const { data } = await api.get('/ai/owner-intelligence');
+                    if (!cancelled) setOwnerIntelligence(data);
+                }
+            } catch (error) {
+                void error;
+            }
+        }
+
+        loadRoleSnapshots();
+        return () => {
+            cancelled = true;
+        };
+    }, [userRole, tasks.length]);
+
+    if (userRole === 'client') {
+        const completed = tasks.filter((task) => task.status === 'completed').length;
+        const active = tasks.filter((task) => ['idle', 'queued', 'in_progress', 'paused', 'delayed'].includes(task.status)).length;
+
+        return (
+            <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+                <header>
+                    <h1 className="text-2xl font-black text-text-primary tracking-tight">Project Status</h1>
+                    <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">Client transparency view</p>
+                </header>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <StatCard icon={Activity} label="Total Jobs" value={tasks.length} color="bg-accent" delay={0.1} />
+                    <StatCard icon={ShieldCheck} label="Completed" value={completed} color="bg-success" delay={0.2} />
+                    <StatCard icon={AlertCircle} label="Active" value={active} color="bg-warning" delay={0.3} />
+                    <StatCard icon={Zap} label="Updates" value={clientReports.length} color="bg-accent" delay={0.4} />
+                </div>
+
+                <div className="glass-card rounded-2xl p-6">
+                    <h3 className="text-sm font-black text-accent uppercase tracking-widest mb-3">AI Progress Snapshot</h3>
+                    <p className="text-sm text-text-primary leading-relaxed">
+                        {clientReports[0]
+                            ? `${clientReports[0].title} is ${clientReports[0].progress_percent}% complete and currently ${clientReports[0].schedule_status.replace(/_/g, ' ')}.`
+                            : 'Your team has not shared enough project activity yet to generate a live progress summary.'}
+                    </p>
+                </div>
+
+                <div className="glass-card rounded-2xl p-6">
+                    <h3 className="text-sm font-black text-text-primary uppercase tracking-widest">Recent Project Reports</h3>
+                    <div className="mt-4 space-y-3">
+                        {clientReports.slice(0, 4).map((report) => (
+                            <div key={report.task_id} className="rounded-xl bg-black/10 px-4 py-3">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-text-primary">{report.title}</p>
+                                    <span className="text-[10px] uppercase tracking-[0.16em] text-text-muted">{report.status}</span>
+                                </div>
+                                <p className="mt-1 text-xs text-text-secondary">
+                                    {report.progress_percent}% complete · {report.schedule_status.replace(/_/g, ' ')}
+                                </p>
+                            </div>
+                        ))}
+                        {clientReports.length === 0 && (
+                            <p className="text-xs text-text-muted">No client reports are available yet.</p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     if (!dashboard) return (
         <div className="flex-1 flex items-center justify-center p-10 text-center">
@@ -63,6 +143,80 @@ const MobileStatsView = memo(function MobileStatsView() {
                     }
                 </p>
             </div>
+
+            {userRole === 'owner' && ownerBusiness && (
+                <>
+                    {ownerIntelligence && (
+                        <div className="glass-card rounded-2xl p-6">
+                            <h3 className="text-sm font-black text-accent uppercase tracking-widest">Owner AI Intelligence</h3>
+                            <p className="mt-3 text-sm text-text-primary leading-relaxed">{ownerIntelligence.forecast?.summary}</p>
+                            <div className="mt-4 space-y-2 text-xs text-text-secondary">
+                                {ownerIntelligence.recommendations?.slice(0, 3).map((item) => (
+                                    <div key={item} className="rounded-xl bg-black/10 px-3 py-3">{item}</div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="glass-card rounded-2xl p-6">
+                        <h3 className="text-sm font-black text-text-primary uppercase tracking-widest">Owner Business View</h3>
+                        <p className="text-xs text-text-muted mt-1">
+                            {ownerBusiness.company.name} · {ownerBusiness.subscription.plan} plan
+                        </p>
+                        <div className="mt-4 space-y-3">
+                            {[
+                                {
+                                    label: 'Users',
+                                    metric: ownerBusiness.subscription.usage.users,
+                                },
+                                {
+                                    label: 'Machines',
+                                    metric: ownerBusiness.subscription.usage.machines,
+                                },
+                                {
+                                    label: 'Tasks / Month',
+                                    metric: ownerBusiness.subscription.usage.tasks,
+                                },
+                            ].map((item) => (
+                                <div key={item.label}>
+                                    <div className="flex items-center justify-between text-[11px] text-text-secondary">
+                                        <span>{item.label}</span>
+                                        <span>
+                                            {item.metric.limit === -1
+                                                ? `${item.metric.used} / Unlimited`
+                                                : `${item.metric.used} / ${item.metric.limit}`}
+                                        </span>
+                                    </div>
+                                    <div className="mt-1 h-2 rounded-full bg-bg-primary overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full bg-accent"
+                                            style={{ width: `${Math.min(item.metric.utilization_percent ?? 24, 100)}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="glass-card rounded-2xl p-6">
+                        <h3 className="text-sm font-black text-text-primary uppercase tracking-widest">Owner Watchlist</h3>
+                        <div className="mt-4 space-y-3 text-sm">
+                            <div className="flex items-center justify-between">
+                                <span className="text-text-secondary">High-risk tasks</span>
+                                <span className="font-bold text-danger">{ownerBusiness.watchlist.high_risk_tasks}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-text-secondary">Unassigned active tasks</span>
+                                <span className="font-bold text-warning">{ownerBusiness.watchlist.unassigned_tasks}</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-text-secondary">Overloaded operators</span>
+                                <span className="font-bold text-accent">{ownerBusiness.watchlist.overloaded_operators}</span>
+                            </div>
+                        </div>
+                    </div>
+                </>
+            )}
         </div>
     );
 });

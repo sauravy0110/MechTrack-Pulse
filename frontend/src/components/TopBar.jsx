@@ -2,24 +2,30 @@ import { memo } from 'react';
 import useAuthStore from '../stores/authStore';
 import useAppStore from '../stores/appStore';
 import ThemeToggle from './ThemeToggle';
-import { Factory, LogOut, Plus, UserPlus } from 'lucide-react';
+import { Brain, Factory, LogOut, Plus, UserPlus } from 'lucide-react';
 
 const TopBar = memo(function TopBar() {
     const { user, logout } = useAuthStore();
     const dashboard = useAppStore((state) => state.dashboard);
     const wsStatus = useAppStore((state) => state.wsStatus);
+    const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
     const taskFilter = useAppStore((state) => state.taskFilter);
     const taskSort = useAppStore((state) => state.taskSort);
     const setTaskFilter = useAppStore((state) => state.setTaskFilter);
     const setTaskSort = useAppStore((state) => state.setTaskSort);
     const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
+    const openGlobalAIModal = useAppStore((state) => state.openGlobalAIModal);
 
     const canCreateTask = user?.role === 'owner' || user?.role === 'supervisor';
     const canManageUsers = user?.role === 'owner' || user?.role === 'supervisor';
     const canViewAnalytics = user?.role === 'owner' || user?.role === 'supervisor';
     const statusColor = wsStatus === 'connected' ? 'bg-success' : wsStatus === 'reconnecting' ? 'bg-warning animate-pulse' : 'bg-danger';
     const statusLabel = wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Offline';
+    const aiConnected = aiProviderStatus?.enabled === true;
+    const aiLabel = aiConnected ? 'AI Connected' : 'AI Unavailable';
+    const aiColor = aiConnected ? 'text-success' : 'text-danger';
+    const aiDot = aiConnected ? 'bg-success' : 'bg-danger';
 
     return (
         <header className="min-h-12 glass-strong border-b border-border flex flex-wrap items-center justify-between gap-3 px-4 py-2 shrink-0">
@@ -36,6 +42,16 @@ const TopBar = memo(function TopBar() {
                         )}
                     </div>
                     <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider">{statusLabel}</span>
+                </div>
+                <div className={`flex items-center gap-2 ml-2 rounded-full border px-2.5 py-1 ${aiConnected ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5'}`} title={aiProviderStatus?.error || aiLabel}>
+                    <div className="relative">
+                        <Brain size={12} className={aiColor} />
+                        <div className={`absolute -right-0.5 -bottom-0.5 w-2 h-2 rounded-full ${aiDot}`} />
+                    </div>
+                    <span className={`text-[10px] font-bold uppercase tracking-[0.16em] ${aiColor}`}>
+                        <span className="hidden md:inline">{aiLabel}</span>
+                        <span className="md:hidden">{aiConnected ? 'AI On' : 'AI Off'}</span>
+                    </span>
                 </div>
             </div>
 
@@ -86,6 +102,14 @@ const TopBar = memo(function TopBar() {
                         <Plus size={12} /> Create Task
                     </button>
                 )}
+
+                <button
+                    type="button"
+                    onClick={openGlobalAIModal}
+                    className="btn-ghost rounded-full px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                >
+                    <Brain size={12} /> AI Assistant
+                </button>
 
                 {canManageUsers && (
                     <button

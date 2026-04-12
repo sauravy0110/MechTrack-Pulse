@@ -7,6 +7,7 @@ Handles creation (with subscription limit checks), listing, updates, deactivatio
 KEY PRINCIPLE: company_id ALWAYS comes from JWT token, never from request body.
 """
 
+import logging
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.core.security import generate_temp_password, hash_password
 from app.models.subscription import Subscription
 from app.models.user import User
+
+logger = logging.getLogger("app.user_service")
 
 
 def create_user(
@@ -84,13 +87,15 @@ def create_user(
     company = db.query(Company).filter(Company.id == company_id).first()
     company_name = company.name if company else "Your Company"
     
-    send_user_welcome_email(
+    email_sent, email_error = send_user_welcome_email(
         user_name=full_name,
         user_email=email,
         company_name=company_name,
         role=role,
         temp_password=temp_password
     )
+    if not email_sent:
+        logger.warning("User welcome email was not delivered to %s: %s", email, email_error)
 
     return user, temp_password, ""
 
