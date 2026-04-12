@@ -800,7 +800,7 @@ const FactoryScene = memo(function FactoryScene() {
         return <SceneSkeleton />;
     }
 
-    const bgColor = isDark ? '#06080f' : '#f0f2f5';
+    const bgColor = isDark ? '#091014' : '#f4efe6';
 
     return (
         <div className="flex-1 relative">

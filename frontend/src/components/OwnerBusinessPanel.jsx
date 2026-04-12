@@ -77,7 +77,7 @@ function UsageBar({ label, metric, accent }) {
     );
 }
 
-const OwnerBusinessPanel = memo(function OwnerBusinessPanel() {
+const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }) {
     const ownerBusiness = useAppStore((state) => state.ownerBusiness);
     const reports = useAppStore((state) => state.reports);
     const dashboard = useAppStore((state) => state.dashboard);
@@ -214,8 +214,11 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel() {
     };
 
     if (loadingOwnerBusiness && !ownerBusiness) {
+        const shellClass = embedded
+            ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+            : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
         return (
-            <aside className="w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+            <aside className={shellClass}>
                 <div className="px-4 py-3 border-b border-border">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Owner Console</h2>
                     <p className="text-[10px] text-text-muted mt-1">Syncing business command center...</p>
@@ -233,8 +236,11 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel() {
     }
 
     if (!ownerBusiness) {
+        const shellClass = embedded
+            ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+            : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
         return (
-            <aside className="w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+            <aside className={shellClass}>
                 <div className="px-4 py-3 border-b border-border">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Owner Console</h2>
                 </div>
@@ -252,9 +258,12 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel() {
     }
 
     const { company, subscription, tasks, machines, team, reports: reportsSummary, watchlist } = ownerBusiness;
+    const shellClass = embedded
+        ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+        : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
 
     return (
-        <aside className="w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+        <aside className={shellClass}>
             <div className="px-4 py-3 border-b border-border">
                 <div className="flex items-start justify-between gap-3">
                     <div>

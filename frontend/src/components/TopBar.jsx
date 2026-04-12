@@ -2,24 +2,18 @@ import { memo } from 'react';
 import useAuthStore from '../stores/authStore';
 import useAppStore from '../stores/appStore';
 import ThemeToggle from './ThemeToggle';
-import { Brain, Factory, LogOut, Plus, UserPlus } from 'lucide-react';
+import { Brain, Factory, LogOut, Plus, RadioTower, UserPlus } from 'lucide-react';
 
-const TopBar = memo(function TopBar() {
+const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDescription = 'Focused workspace' }) {
     const { user, logout } = useAuthStore();
-    const dashboard = useAppStore((state) => state.dashboard);
     const wsStatus = useAppStore((state) => state.wsStatus);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
-    const taskFilter = useAppStore((state) => state.taskFilter);
-    const taskSort = useAppStore((state) => state.taskSort);
-    const setTaskFilter = useAppStore((state) => state.setTaskFilter);
-    const setTaskSort = useAppStore((state) => state.setTaskSort);
     const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
     const openGlobalAIModal = useAppStore((state) => state.openGlobalAIModal);
 
     const canCreateTask = user?.role === 'owner' || user?.role === 'supervisor';
     const canManageUsers = user?.role === 'owner' || user?.role === 'supervisor';
-    const canViewAnalytics = user?.role === 'owner' || user?.role === 'supervisor';
     const statusColor = wsStatus === 'connected' ? 'bg-success' : wsStatus === 'reconnecting' ? 'bg-warning animate-pulse' : 'bg-danger';
     const statusLabel = wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Offline';
     const aiConnected = aiProviderStatus?.enabled === true;
@@ -28,111 +22,84 @@ const TopBar = memo(function TopBar() {
     const aiDot = aiConnected ? 'bg-success' : 'bg-danger';
 
     return (
-        <header className="min-h-12 glass-strong border-b border-border flex flex-wrap items-center justify-between gap-3 px-4 py-2 shrink-0">
-            <div className="flex items-center gap-3">
-                <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center glow-accent">
-                    <Factory size={14} className="text-white" />
-                </div>
-                <span className="text-sm font-bold tracking-wide text-text-primary">MECHTRACK PULSE</span>
-                <div className="flex items-center gap-1.5 ml-2" title={statusLabel}>
-                    <div className="relative">
-                        <div className={`w-2 h-2 rounded-full ${statusColor}`} />
-                        {wsStatus === 'connected' && (
-                            <div className="absolute inset-0 w-2 h-2 rounded-full bg-success animate-ping opacity-40" />
-                        )}
+        <header className="dashboard-shell min-h-12 shrink-0 border-b border-border/70 px-4 py-3 sm:px-5 lg:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-4">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-xl shadow-accent/20">
+                        <Factory size={18} />
                     </div>
-                    <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider">{statusLabel}</span>
-                </div>
-                <div className={`flex items-center gap-2 ml-2 rounded-full border px-2.5 py-1 ${aiConnected ? 'border-success/30 bg-success/5' : 'border-danger/30 bg-danger/5'}`} title={aiProviderStatus?.error || aiLabel}>
-                    <div className="relative">
-                        <Brain size={12} className={aiColor} />
-                        <div className={`absolute -right-0.5 -bottom-0.5 w-2 h-2 rounded-full ${aiDot}`} />
+                    <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">MechTrack Pulse</p>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <h1 className="font-display truncate text-2xl text-text-primary">{sectionTitle}</h1>
+                            <p className="hidden text-sm text-text-secondary lg:block">{sectionDescription}</p>
+                        </div>
                     </div>
-                    <span className={`text-[10px] font-bold uppercase tracking-[0.16em] ${aiColor}`}>
-                        <span className="hidden md:inline">{aiLabel}</span>
-                        <span className="md:hidden">{aiConnected ? 'AI On' : 'AI Off'}</span>
-                    </span>
-                </div>
-            </div>
-
-            {canViewAnalytics && dashboard ? (
-                <div className="hidden xl:flex items-center gap-5 text-xs font-mono">
-                    {[
-                        { label: 'TASKS', value: dashboard.tasks?.total || 0, color: 'text-text-primary' },
-                        { label: 'DONE', value: dashboard.tasks?.completed || 0, color: 'text-success', dot: 'bg-success' },
-                        { label: 'ACTIVE', value: dashboard.tasks?.in_progress || 0, color: 'text-warning', dot: 'bg-warning' },
-                        { label: 'DELAYED', value: dashboard.tasks?.delayed || 0, color: 'text-danger', dot: 'bg-danger' },
-                    ].map((stat) => (
-                        <span key={stat.label} className={stat.color}>
-                            {stat.dot && <span className={`inline-block w-1.5 h-1.5 rounded-full ${stat.dot} mr-1`} />}
-                            {stat.label} <span className="font-bold ml-0.5">{stat.value}</span>
-                        </span>
-                    ))}
-                </div>
-            ) : null}
-
-            <div className="flex flex-wrap items-center justify-end gap-2">
-                <div className="hidden lg:flex items-center gap-2">
-                    <select
-                        value={taskFilter}
-                        onChange={(event) => setTaskFilter(event.target.value)}
-                        className="input-glass rounded-full px-3 py-1.5 text-[11px] font-medium"
-                    >
-                        <option value="all">All Tasks</option>
-                        <option value="active">Active</option>
-                        <option value="completed">Completed</option>
-                        <option value="delayed">Delayed</option>
-                    </select>
-                    <select
-                        value={taskSort}
-                        onChange={(event) => setTaskSort(event.target.value)}
-                        className="input-glass rounded-full px-3 py-1.5 text-[11px] font-medium"
-                    >
-                        <option value="priority">Sort: Priority</option>
-                        <option value="time">Sort: Time</option>
-                    </select>
                 </div>
 
-                {canCreateTask && (
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                    <div className="hidden items-center gap-2 xl:flex">
+                        <div className="flex items-center gap-2 rounded-full border border-border/70 bg-bg-hover/70 px-3 py-2" title={statusLabel}>
+                            <div className="relative">
+                                <RadioTower size={13} className="text-text-secondary" />
+                                <div className={`absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full ${statusColor}`} />
+                            </div>
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">{statusLabel}</span>
+                        </div>
+                        <div className={`flex items-center gap-2 rounded-full border px-3 py-2 ${aiConnected ? 'border-success/30 bg-success/6' : 'border-danger/30 bg-danger/6'}`} title={aiProviderStatus?.error || aiLabel}>
+                            <div className="relative">
+                                <Brain size={13} className={aiColor} />
+                                <div className={`absolute -right-0.5 -bottom-0.5 h-2 w-2 rounded-full ${aiDot}`} />
+                            </div>
+                            <span className={`text-[10px] font-semibold uppercase tracking-[0.18em] ${aiColor}`}>
+                                {aiLabel}
+                            </span>
+                        </div>
+                    </div>
+
+                    {canCreateTask && (
+                        <button
+                            type="button"
+                            onClick={() => openCreateTaskModal()}
+                            className="btn-primary rounded-full px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5"
+                        >
+                            <Plus size={12} /> Create Task
+                        </button>
+                    )}
+
                     <button
                         type="button"
-                        onClick={() => openCreateTaskModal()}
-                        className="btn-primary rounded-full px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                        onClick={openGlobalAIModal}
+                        className={`rounded-full px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5 border ${
+                            aiConnected ? 'border-success/30 bg-success/6 text-success' : 'border-danger/30 bg-danger/6 text-danger'
+                        }`}
                     >
-                        <Plus size={12} /> Create Task
+                        <Brain size={12} /> AI Assistant
                     </button>
-                )}
 
-                <button
-                    type="button"
-                    onClick={openGlobalAIModal}
-                    className="btn-ghost rounded-full px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
-                >
-                    <Brain size={12} /> AI Assistant
-                </button>
+                    {canManageUsers && (
+                        <button
+                            type="button"
+                            onClick={openAddUserModal}
+                            className="btn-ghost rounded-full px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5"
+                        >
+                            <UserPlus size={12} /> Add User
+                        </button>
+                    )}
 
-                {canManageUsers && (
+                    <ThemeToggle />
+
+                    <div className="hidden rounded-full border border-border/70 bg-bg-hover/70 px-3 py-2 text-right sm:block">
+                        <p className="text-xs font-medium text-text-primary">{user?.full_name}</p>
+                        <p className="text-[10px] text-text-muted uppercase tracking-wider">{user?.role}</p>
+                    </div>
                     <button
-                        type="button"
-                        onClick={openAddUserModal}
-                        className="btn-ghost rounded-full px-4 py-1.5 text-xs font-semibold inline-flex items-center gap-1.5"
+                        onClick={logout}
+                        className="btn-ghost rounded-full px-4 py-2 text-xs inline-flex items-center gap-1.5 cursor-pointer"
                     >
-                        <UserPlus size={12} /> Add User
+                        <LogOut size={12} /> Logout
                     </button>
-                )}
-
-                <ThemeToggle />
-
-                <div className="text-right hidden sm:block ml-1">
-                    <p className="text-xs font-medium text-text-primary">{user?.full_name}</p>
-                    <p className="text-[10px] text-text-muted uppercase tracking-wider">{user?.role}</p>
                 </div>
-                <button
-                    onClick={logout}
-                    className="btn-ghost rounded-lg px-3 py-1.5 text-xs inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                    <LogOut size={12} /> Logout
-                </button>
             </div>
         </header>
     );

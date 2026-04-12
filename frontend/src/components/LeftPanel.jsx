@@ -10,7 +10,7 @@ const STATUS_COLORS = {
     idle: 'bg-idle',
 };
 
-const LeftPanel = memo(function LeftPanel() {
+const LeftPanel = memo(function LeftPanel({ embedded = false }) {
     const machines = useAppStore((s) => s.machines);
     const tasks = useAppStore((s) => s.tasks);
     const selectedMachine = useAppStore((s) => s.selectedMachine);
@@ -28,8 +28,12 @@ const LeftPanel = memo(function LeftPanel() {
         }));
     }, [machines, tasks, getMachineStatus]);
 
+    const shellClass = embedded
+        ? 'premium-surface h-full w-[19rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
+        : 'w-64 glass border-r border-border flex flex-col shrink-0 overflow-hidden';
+
     return (
-        <aside className="w-64 glass border-r border-border flex flex-col shrink-0 overflow-hidden">
+        <aside className={shellClass}>
             <div className="px-4 py-3 border-b border-border">
                 <div className="flex items-start justify-between gap-3">
                     <div>

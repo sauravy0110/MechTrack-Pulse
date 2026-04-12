@@ -23,7 +23,7 @@ const StatCard = ({ icon, label, value, color, delay }) => {
     );
 };
 
-const MobileStatsView = memo(function MobileStatsView() {
+const MobileStatsView = memo(function MobileStatsView({ embedded = false }) {
     const dashboard = useAppStore((s) => s.dashboard);
     const machines = useAppStore((s) => s.machines);
     const tasks = useAppStore((s) => s.tasks);
@@ -55,14 +55,18 @@ const MobileStatsView = memo(function MobileStatsView() {
         };
     }, [userRole, tasks.length]);
 
+    const wrapperClass = embedded
+        ? 'h-full overflow-y-auto px-6 py-6 space-y-6'
+        : 'flex-1 overflow-y-auto p-4 space-y-6 pb-32';
+
     if (userRole === 'client') {
         const completed = tasks.filter((task) => task.status === 'completed').length;
         const active = tasks.filter((task) => ['idle', 'queued', 'in_progress', 'paused', 'delayed'].includes(task.status)).length;
 
         return (
-            <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+            <div className={wrapperClass}>
                 <header>
-                    <h1 className="text-2xl font-black text-text-primary tracking-tight">Project Status</h1>
+                    <h1 className={`text-text-primary tracking-tight ${embedded ? 'font-display text-4xl leading-none' : 'text-2xl font-black'}`}>Project Status</h1>
                     <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">Client transparency view</p>
                 </header>
 
@@ -121,9 +125,9 @@ const MobileStatsView = memo(function MobileStatsView() {
     ];
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-32">
+        <div className={wrapperClass}>
             <header>
-                <h1 className="text-2xl font-black text-text-primary tracking-tight">System Status</h1>
+                <h1 className={`text-text-primary tracking-tight ${embedded ? 'font-display text-4xl leading-none' : 'text-2xl font-black'}`}>System Status</h1>
                 <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">Fleet-wide performance</p>
             </header>
 

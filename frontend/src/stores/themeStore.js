@@ -9,7 +9,7 @@ const getInitialTheme = () => {
 const applyTheme = (theme) => {
     document.documentElement.setAttribute('data-theme', theme);
     document.querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', theme === 'dark' ? '#06080f' : '#f0f2f5');
+        ?.setAttribute('content', theme === 'dark' ? '#091014' : '#f4efe6');
 };
 
 // Apply immediately on load

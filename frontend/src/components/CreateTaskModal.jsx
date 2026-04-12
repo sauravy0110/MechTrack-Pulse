@@ -83,17 +83,18 @@ export default function CreateTaskModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8">
+        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8" onClick={closeModal}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="w-full max-w-lg glass-strong rounded-3xl p-7 shadow-2xl sm:p-8">
+                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="modal-shell w-full max-w-lg rounded-[30px] p-7 shadow-2xl sm:p-8"
+                onClick={(event) => event.stopPropagation()}>
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">Task management</p>
-                        <h2 className="mt-2 text-2xl font-bold tracking-tight text-text-primary">Create Task</h2>
+                        <h2 className="font-display mt-2 text-3xl tracking-tight text-text-primary">Create Task</h2>
                         <p className="mt-2 text-xs leading-6 text-text-secondary">Dispatch a task. Assign the operator from the machine detail panel.</p>
                     </div>
                     <button type="button" onClick={closeModal} disabled={creatingTask}
-                        className="btn-ghost rounded-full p-2 disabled:opacity-50"><X size={16} /></button>
+                        className="modal-close disabled:opacity-50"><X size={14} /> Close</button>
                 </div>
 
                 {error && (

@@ -7,7 +7,7 @@ import TaskWorkspacePanel from './TaskWorkspacePanel';
 
 const MotionDiv = motion.div;
 
-const MobileTaskView = memo(function MobileTaskView() {
+const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const tasks = useAppStore((state) => state.tasks);
     const machines = useAppStore((state) => state.machines);
     const updateTaskStatus = useAppStore((state) => state.updateTaskStatus);
@@ -47,11 +47,15 @@ const MobileTaskView = memo(function MobileTaskView() {
         setExpandedTaskId((current) => current === task.id ? '' : task.id);
     };
 
+    const wrapperClass = embedded
+        ? 'h-full overflow-y-auto px-6 py-6 space-y-5'
+        : 'flex-1 overflow-y-auto p-4 space-y-4 pb-32';
+
     return (
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-32">
+        <div className={wrapperClass}>
             <header className="mb-6 flex items-end justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-black text-text-primary tracking-tight">Active Work</h1>
+                    <h1 className={`text-text-primary tracking-tight ${embedded ? 'font-display text-4xl leading-none' : 'text-2xl font-black'}`}>Active Work</h1>
                     <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">{visibleTasks.length} visible · {taskFilter} · {taskSort}</p>
                 </div>
                 {canCreateTask && (

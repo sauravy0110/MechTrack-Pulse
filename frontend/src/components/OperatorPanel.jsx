@@ -24,7 +24,7 @@ function getWorkloadColor(taskCount) {
     return 'bg-warning';
 }
 
-const OperatorPanel = memo(function OperatorPanel() {
+const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
     const users = useAppStore((state) => state.users);
     const operators = useAppStore((state) => state.operators);
     const loadingUsers = useAppStore((state) => state.loadingUsers);
@@ -89,8 +89,12 @@ const OperatorPanel = memo(function OperatorPanel() {
 
     const totalMembers = teamMembers.length;
 
+    const shellClass = embedded
+        ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+        : 'w-64 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
+
     return (
-        <aside className="w-64 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+        <aside className={shellClass}>
             <div className="px-4 py-3 border-b border-border">
                 <div className="flex items-start justify-between gap-3">
                     <div>

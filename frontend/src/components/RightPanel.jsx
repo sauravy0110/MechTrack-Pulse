@@ -24,7 +24,7 @@ const WORKFLOW_ACTIONS = {
 
 function formatStatus(status) { return status.replace('_', ' '); }
 
-const RightPanel = memo(function RightPanel() {
+const RightPanel = memo(function RightPanel({ embedded = false }) {
     const selectedMachine = useAppStore((s) => s.selectedMachine);
     const selectedTask = useAppStore((s) => s.selectedTask);
     const tasks = useAppStore((s) => s.tasks);
@@ -102,12 +102,16 @@ const RightPanel = memo(function RightPanel() {
     };
 
     if (!selectedMachine && userRole === 'owner') {
-        return <OwnerBusinessPanel />;
+        return <OwnerBusinessPanel embedded={embedded} />;
     }
+
+    const shellClass = embedded
+        ? 'premium-surface h-full w-[22rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
+        : 'w-72 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
 
     if (selectedMachine) {
         return (
-            <aside className="w-72 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+            <aside className={shellClass}>
                 <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3">
                     <div>
                         <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Machine Detail</h2>
@@ -252,7 +256,7 @@ const RightPanel = memo(function RightPanel() {
     }
 
     return (
-        <aside className="w-72 glass border-l border-border flex flex-col shrink-0 overflow-hidden">
+        <aside className={shellClass}>
             <div className="px-4 py-3 border-b border-border">
                 <div className="flex items-center justify-between gap-3">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Overview</h2>

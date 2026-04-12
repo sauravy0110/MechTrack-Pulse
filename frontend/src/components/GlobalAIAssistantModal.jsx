@@ -42,23 +42,25 @@ export default function GlobalAIAssistantModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-bg-overlay px-4 py-8">
+        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-bg-overlay px-4 py-8" onClick={closeModal}>
             <motion.div
                 initial={{ opacity: 0, y: 14, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 14, scale: 0.98 }}
-                className="w-full max-w-2xl glass-strong rounded-3xl p-7 shadow-2xl"
+                className="modal-shell w-full max-w-2xl rounded-[30px] p-7 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
             >
                 <div className="flex items-start justify-between gap-4">
                     <div>
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">Global AI assistant</p>
-                        <h2 className="mt-2 text-2xl font-bold tracking-tight text-text-primary">Ask the business anything</h2>
+                        <h2 className="font-display mt-2 text-3xl tracking-tight text-text-primary">Ask the business anything</h2>
                         <p className="mt-2 text-sm text-text-secondary">
                             Get role-aware answers about operators, delays, bottlenecks, costs, and output.
                         </p>
                     </div>
-                    <button type="button" onClick={closeModal} className="btn-ghost rounded-full p-2">
-                        <X size={16} />
+                    <button type="button" onClick={closeModal} className="modal-close">
+                        <X size={14} />
+                        Close
                     </button>
                 </div>
 
