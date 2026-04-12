@@ -29,7 +29,7 @@ const LeftPanel = memo(function LeftPanel({ embedded = false }) {
     }, [machines, tasks, getMachineStatus]);
 
     const shellClass = embedded
-        ? 'premium-surface h-full w-[19rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
+        ? 'premium-surface h-full min-h-0 w-[19rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
         : 'w-64 glass border-r border-border flex flex-col shrink-0 overflow-hidden';
 
     return (

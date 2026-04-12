@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import adminClient from '../api/adminClient';
 import { getApiErrorMessage } from '../utils/apiError';
 import ThemeToggle from '../components/ThemeToggle';
+import BrandLogo from '../components/BrandLogo';
 import { Shield, Eye, EyeOff, ArrowRight, Lock, Zap, CheckCircle } from 'lucide-react';
 
 const fadeUp = {
@@ -46,13 +47,7 @@ export default function AdminLogin() {
             <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-8 lg:px-12">
                 <motion.header initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                     <Link to="/" className="inline-flex items-center gap-3 group">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gold text-black glow-gold group-hover:scale-105 transition-transform">
-                            <Shield size={18} />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold tracking-tight">MechTrack Admin</p>
-                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">Platform Console</p>
-                        </div>
+                        <BrandLogo size="sm" title="MechTrack Admin" subtitle="Platform Console" />
                     </Link>
                     <div className="flex items-center gap-2">
                         <ThemeToggle />

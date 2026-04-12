@@ -227,8 +227,8 @@ function ProfileSection({ onSectionSelect }) {
     ];
 
     return (
-        <div className="grid h-full gap-4 xl:grid-cols-[minmax(0,1.15fr)_380px]">
-            <div className="space-y-4 overflow-y-auto pr-1">
+        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_380px]">
+            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
                 <section className="premium-surface rounded-[32px] p-6 lg:p-7">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Account</p>
                     <h3 className="font-display mt-3 text-4xl leading-none text-text-primary">{user?.full_name}</h3>
@@ -283,7 +283,7 @@ function ProfileSection({ onSectionSelect }) {
                 </section>
             </div>
 
-            <div className="space-y-4 overflow-y-auto pr-1">
+            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
                 <section className="premium-surface rounded-[32px] p-6">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">Workspace health</p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -322,11 +322,11 @@ function IntelligenceSection({ mode = 'supervisor' }) {
         : 'Insight cards will appear here as the AI engine detects delays, overload, or efficiency opportunities.';
 
     return (
-        <div className="grid h-full gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
-            <div className="premium-surface h-full overflow-hidden rounded-[32px]">
+        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+            <div className="premium-surface h-full min-h-0 overflow-hidden rounded-[32px]">
                 <MobileStatsView embedded />
             </div>
-            <div className="premium-surface h-full overflow-y-auto rounded-[32px] p-6">
+            <div className="premium-surface h-full min-h-0 overflow-y-auto rounded-[32px] p-6">
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">AI insight rail</p>
@@ -561,7 +561,7 @@ export default function DashboardPage() {
                                 />
                             </div>
 
-                            <div className="min-h-0 flex flex-col gap-4">
+                            <div className="min-h-0 flex flex-col gap-4 overflow-hidden">
                                 <div className="overflow-x-auto lg:hidden">
                                     <div className="flex gap-2 pb-1">
                                         {sections.map((section) => (
@@ -579,7 +579,7 @@ export default function DashboardPage() {
                                     </div>
                                 </div>
 
-                                <div className="premium-surface rounded-[32px] px-6 py-5">
+                                <div className="premium-surface shrink-0 rounded-[32px] px-6 py-5">
                                     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                                         <div>
                                             <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Focused section</p>
@@ -610,7 +610,7 @@ export default function DashboardPage() {
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -10 }}
                                         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                                        className="min-h-0 flex-1"
+                                        className="min-h-0 flex-1 overflow-y-auto pr-1"
                                     >
                                         {renderDesktopSection()}
                                     </motion.div>

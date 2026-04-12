@@ -215,7 +215,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     if (loadingOwnerBusiness && !ownerBusiness) {
         const shellClass = embedded
-            ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+            ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
             : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
         return (
             <aside className={shellClass}>
@@ -237,7 +237,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     if (!ownerBusiness) {
         const shellClass = embedded
-            ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+            ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
             : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
         return (
             <aside className={shellClass}>
@@ -259,7 +259,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     const { company, subscription, tasks, machines, team, reports: reportsSummary, watchlist } = ownerBusiness;
     const shellClass = embedded
-        ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+        ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
         : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
 
     return (

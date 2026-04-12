@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
-import { ArrowRight, Brain, Cpu, Orbit, RadioTower } from 'lucide-react';
+import BrandLogo from './BrandLogo';
+import { ArrowRight, Brain, Cpu, RadioTower } from 'lucide-react';
 
 const ROLE_COPY = {
     owner: 'Strategic control for growth, execution, and business intelligence.',
@@ -32,23 +33,21 @@ export default function DashboardSectionMenu({
     const roleLabel = user?.role ? `${user.role.charAt(0).toUpperCase()}${user.role.slice(1)}` : 'Workspace';
 
     return (
-        <aside className="premium-surface flex h-full flex-col rounded-[32px] p-4 lg:p-5">
+        <aside className="premium-surface flex h-full min-h-0 flex-col rounded-[32px] p-4 lg:p-5">
             <div className="rounded-[28px] border border-border/70 bg-gradient-to-br from-white/75 via-white/35 to-accent/8 p-5">
-                <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-white shadow-lg shadow-accent/20">
-                        <Orbit size={20} />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Workspace</p>
-                        <h2 className="font-display text-2xl text-text-primary">Command Deck</h2>
-                    </div>
-                </div>
+                <BrandLogo
+                    size="md"
+                    title="MechTrackPulse"
+                    subtitle="Precision. Progress. Performance."
+                    className="items-center"
+                    titleClassName="text-2xl"
+                />
                 <p className="mt-4 text-sm leading-6 text-text-secondary">
                     {ROLE_COPY[user?.role] || 'Move through each business area one section at a time.'}
                 </p>
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
                 <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">Sections</p>
                 <div className="mt-3 flex flex-col gap-2">
                     {sections.map((section) => {
@@ -83,7 +82,7 @@ export default function DashboardSectionMenu({
                 </div>
             </div>
 
-            <div className="mt-auto space-y-3 pt-5">
+            <div className="space-y-3 pt-5">
                 <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                     <StatusChip
                         icon={RadioTower}

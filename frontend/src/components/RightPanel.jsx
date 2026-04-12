@@ -106,7 +106,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     }
 
     const shellClass = embedded
-        ? 'premium-surface h-full w-[22rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
+        ? 'premium-surface h-full min-h-0 w-[22rem] rounded-[28px] flex flex-col shrink-0 overflow-hidden'
         : 'w-72 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
 
     if (selectedMachine) {

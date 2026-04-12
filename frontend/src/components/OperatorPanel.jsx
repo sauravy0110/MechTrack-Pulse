@@ -90,7 +90,7 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
     const totalMembers = teamMembers.length;
 
     const shellClass = embedded
-        ? 'premium-surface h-full rounded-[28px] flex flex-col overflow-hidden'
+        ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
         : 'w-64 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
 
     return (

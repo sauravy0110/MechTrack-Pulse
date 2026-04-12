@@ -35,7 +35,7 @@ def test_try_brevo_uses_cleaned_key_and_sender(monkeypatch):
 
     monkeypatch.setattr(email_service.requests, "post", fake_post)
 
-    ok, err = email_service._try_brevo("user@example.com", "Subject", "Body")
+    ok, err = email_service._try_brevo("user@example.com", "Subject", "Body", "<p>Body</p>")
 
     assert ok is True
     assert err == ""
@@ -44,6 +44,7 @@ def test_try_brevo_uses_cleaned_key_and_sender(monkeypatch):
     assert captured["json"]["sender"]["email"] == "verified@mechtrackpulse.com"
     assert captured["json"]["sender"]["name"] == "MechTrack Alerts"
     assert captured["json"]["to"] == [{"email": "user@example.com"}]
+    assert captured["json"]["htmlContent"] == "<p>Body</p>"
 
 
 def test_dispatch_returns_failure_when_only_console_fallback_is_available(monkeypatch):
@@ -68,3 +69,31 @@ def test_dispatch_returns_failure_when_only_console_fallback_is_available(monkey
     assert "RESEND_API_KEY not configured" in error
     assert "SMTP credentials incomplete" in error
     assert "Console fallback only" in error
+
+
+def test_dispatch_preserves_html_for_http_transports(monkeypatch):
+    captured: dict = {}
+
+    def fake_brevo(to, subject, body, html_body):
+        captured["to"] = to
+        captured["subject"] = subject
+        captured["body"] = body
+        captured["html_body"] = html_body
+        return True, ""
+
+    monkeypatch.setattr(email_service, "_try_brevo", fake_brevo)
+
+    message = EmailMessage()
+    message["To"] = "owner@example.com"
+    message["Subject"] = "Welcome"
+    message.set_content("Plain body")
+    message.add_alternative("<p>Rich body</p>", subtype="html")
+
+    sent, error = email_service._dispatch(message)
+
+    assert sent is True
+    assert error == ""
+    assert captured["to"] == "owner@example.com"
+    assert captured["subject"] == "Welcome"
+    assert captured["body"] == "Plain body\n"
+    assert captured["html_body"] == "<p>Rich body</p>\n"

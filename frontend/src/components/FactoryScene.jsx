@@ -493,7 +493,7 @@ const FloorGrid = memo(function FloorGrid() {
     const isDark = theme === 'dark';
     const gridColor1 = isDark ? '#1e293b' : '#cbd5e1';
     const gridColor2 = isDark ? '#0f1623' : '#e2e8f0';
-    const floorColor = isDark ? '#0c1018' : '#f0f2f5';
+    const floorColor = isDark ? '#0b1920' : '#f6f3ed';
 
     return (
         <group>
@@ -768,7 +768,7 @@ function ThemeAwareScene({ children }) {
 
     useEffect(() => {
         const isDark = theme === 'dark';
-        const bgColor = isDark ? '#06080f' : '#f0f2f5';
+        const bgColor = isDark ? '#071218' : '#f6f3ed';
         gl.setClearColor(bgColor);
         if (scene.fog) {
             scene.fog.color.set(bgColor);
@@ -800,7 +800,7 @@ const FactoryScene = memo(function FactoryScene() {
         return <SceneSkeleton />;
     }
 
-    const bgColor = isDark ? '#091014' : '#f4efe6';
+    const bgColor = isDark ? '#071218' : '#f6f3ed';
 
     return (
         <div className="flex-1 relative">
@@ -835,8 +835,8 @@ const FactoryScene = memo(function FactoryScene() {
                         shadow-camera-bottom={-25}
                         shadow-bias={-0.0001}
                     />
-                    <pointLight position={[-12, 6, -12]} intensity={isDark ? 0.4 : 0.2} color="#818cf8" distance={30} decay={2} />
-                    {isDark && <pointLight position={[12, 4, -8]} intensity={0.15} color="#fbbf24" distance={20} decay={2} />}
+                    <pointLight position={[-12, 6, -12]} intensity={isDark ? 0.4 : 0.2} color="#2f88a4" distance={30} decay={2} />
+                    {isDark && <pointLight position={[12, 4, -8]} intensity={0.15} color="#9bd0e3" distance={20} decay={2} />}
 
                     <fog attach="fog" args={[bgColor, isDark ? 25 : 20, isDark ? 60 : 55]} />
 

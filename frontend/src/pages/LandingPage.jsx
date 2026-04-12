@@ -4,6 +4,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Float } from '@react-three/drei';
 import { motion, useInView } from 'framer-motion';
 import * as THREE from 'three';
+import BrandLogo from '../components/BrandLogo';
 import ThemeToggle from '../components/ThemeToggle';
 import useThemeStore from '../stores/themeStore';
 import { Factory, Shield, Zap, Users, ArrowRight, Play } from 'lucide-react';
@@ -34,44 +35,44 @@ function HeroVisual() {
     return (
         <group>
             <group ref={groupRef}>
-                <mesh>
-                    <icosahedronGeometry args={[1.8, 1]} />
-                    <meshStandardMaterial
-                        color="#818cf8"
-                        emissive="#6366f1"
-                        emissiveIntensity={0.15}
-                        wireframe
-                        transparent
+                    <mesh>
+                        <icosahedronGeometry args={[1.8, 1]} />
+                        <meshStandardMaterial
+                            color="#2f88a4"
+                            emissive="#14566d"
+                            emissiveIntensity={0.15}
+                            wireframe
+                            transparent
                         opacity={0.7}
                     />
                 </mesh>
-                <mesh>
-                    <octahedronGeometry args={[1.2, 0]} />
-                    <meshStandardMaterial
-                        color="#fbbf24"
-                        emissive="#f59e0b"
-                        emissiveIntensity={0.12}
-                        wireframe
-                        transparent
+                    <mesh>
+                        <octahedronGeometry args={[1.2, 0]} />
+                        <meshStandardMaterial
+                            color="#9bd0e3"
+                            emissive="#2f88a4"
+                            emissiveIntensity={0.12}
+                            wireframe
+                            transparent
                         opacity={0.5}
                     />
                 </mesh>
-                <mesh scale={0.4}>
-                    <dodecahedronGeometry args={[1, 0]} />
-                    <meshStandardMaterial
-                        color="#ffffff"
-                        emissive="#818cf8"
-                        emissiveIntensity={0.3}
-                    />
-                </mesh>
+                    <mesh scale={0.4}>
+                        <dodecahedronGeometry args={[1, 0]} />
+                        <meshStandardMaterial
+                            color="#ffffff"
+                            emissive="#2f88a4"
+                            emissiveIntensity={0.3}
+                        />
+                    </mesh>
             </group>
 
             <Float speed={1.5} rotationIntensity={0.4} floatIntensity={0.5}>
                 <mesh ref={torusRef} position={[3, 1.5, -1]}>
                     <torusKnotGeometry args={[0.5, 0.15, 64, 8]} />
                     <meshStandardMaterial
-                        color="#818cf8"
-                        emissive="#6366f1"
+                        color="#2f88a4"
+                        emissive="#14566d"
                         emissiveIntensity={0.2}
                         wireframe
                         transparent
@@ -82,23 +83,23 @@ function HeroVisual() {
 
             <mesh ref={ringRef} rotation-x={Math.PI / 2}>
                 <torusGeometry args={[3.2, 0.02, 16, 100]} />
-                <meshBasicMaterial color="#818cf8" transparent opacity={0.3} />
+                <meshBasicMaterial color="#2f88a4" transparent opacity={0.3} />
             </mesh>
 
             <mesh rotation-x={Math.PI / 3} rotation-y={Math.PI / 6}>
                 <torusGeometry args={[3.8, 0.015, 16, 100]} />
-                <meshBasicMaterial color="#fbbf24" transparent opacity={0.2} />
+                <meshBasicMaterial color="#9bd0e3" transparent opacity={0.24} />
             </mesh>
 
             <mesh rotation-x={Math.PI / 4} rotation-z={Math.PI / 5}>
                 <torusGeometry args={[4.2, 0.01, 16, 100]} />
-                <meshBasicMaterial color="#818cf8" transparent opacity={0.1} />
+                <meshBasicMaterial color="#14566d" transparent opacity={0.15} />
             </mesh>
 
             <ambientLight intensity={0.6} />
             <pointLight position={[6, 8, 6]} intensity={1.2} color="#ffffff" />
-            <pointLight position={[-6, -4, -8]} intensity={0.6} color="#818cf8" />
-            <pointLight position={[0, 5, 0]} intensity={0.3} color="#fbbf24" />
+            <pointLight position={[-6, -4, -8]} intensity={0.6} color="#2f88a4" />
+            <pointLight position={[0, 5, 0]} intensity={0.3} color="#9bd0e3" />
         </group>
     );
 }
@@ -237,15 +238,12 @@ export default function LandingPage() {
                     transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
                     className="glass-strong flex items-center justify-between rounded-2xl px-5 py-3 shadow-lg"
                 >
-                    <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white glow-accent">
-                            <Factory size={18} />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold tracking-tight">MechTrack Pulse</p>
-                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">Factory Control</p>
-                        </div>
-                    </div>
+                    <BrandLogo
+                        size="sm"
+                        title="MechTrackPulse"
+                        subtitle="Precision. Progress. Performance."
+                        subtitleClassName="hidden md:block"
+                    />
 
                     <div className="flex items-center gap-2">
                         <ThemeToggle />

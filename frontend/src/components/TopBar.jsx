@@ -2,7 +2,8 @@ import { memo } from 'react';
 import useAuthStore from '../stores/authStore';
 import useAppStore from '../stores/appStore';
 import ThemeToggle from './ThemeToggle';
-import { Brain, Factory, LogOut, Plus, RadioTower, UserPlus } from 'lucide-react';
+import BrandLogo from './BrandLogo';
+import { Brain, LogOut, Plus, RadioTower, UserPlus } from 'lucide-react';
 
 const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDescription = 'Focused workspace' }) {
     const { user, logout } = useAuthStore();
@@ -25,11 +26,17 @@ const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDe
         <header className="dashboard-shell min-h-12 shrink-0 border-b border-border/70 px-4 py-3 sm:px-5 lg:px-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-4">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-accent text-white shadow-xl shadow-accent/20">
-                        <Factory size={18} />
-                    </div>
+                    <BrandLogo
+                        size="sm"
+                        title="MechTrackPulse"
+                        subtitle="Precision. Progress. Performance."
+                        className="min-w-0"
+                        titleClassName="text-xl"
+                        subtitleClassName="hidden xl:block"
+                    />
+                    <div className="hidden h-9 w-px bg-border lg:block" />
                     <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">MechTrack Pulse</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Focused section</p>
                         <div className="flex flex-wrap items-center gap-3">
                             <h1 className="font-display truncate text-2xl text-text-primary">{sectionTitle}</h1>
                             <p className="hidden text-sm text-text-secondary lg:block">{sectionDescription}</p>

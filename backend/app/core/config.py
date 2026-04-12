@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL_REASONING: str = "openrouter/free"
     OPENROUTER_TIMEOUT_SECONDS: int = 30
 
+    # ── Public App URLs ───────────────────────────────────────
+    PUBLIC_APP_URL: str = "https://mech-track-pulse.vercel.app"
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

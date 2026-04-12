@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import useAuthStore from '../stores/authStore';
 import ThemeToggle from '../components/ThemeToggle';
-import { Factory, Lock, Eye, EyeOff, ArrowRight, Shield, Monitor } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
+import { Lock, Eye, EyeOff, ArrowRight, Shield, Monitor } from 'lucide-react';
 
 const fadeUp = {
     hidden: { opacity: 0, y: 24 },
@@ -49,13 +50,7 @@ export default function LoginPage() {
                     className="flex items-center justify-between"
                 >
                     <Link to="/" className="inline-flex items-center gap-3 group">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white glow-accent group-hover:scale-105 transition-transform">
-                            <Factory size={18} />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold tracking-tight">MechTrack Pulse</p>
-                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">User Workspace</p>
-                        </div>
+                        <BrandLogo size="sm" title="MechTrackPulse" subtitle="User Workspace" />
                     </Link>
                     <div className="flex items-center gap-2">
                         <ThemeToggle />

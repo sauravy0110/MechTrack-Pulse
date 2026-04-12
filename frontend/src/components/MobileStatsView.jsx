@@ -56,7 +56,7 @@ const MobileStatsView = memo(function MobileStatsView({ embedded = false }) {
     }, [userRole, tasks.length]);
 
     const wrapperClass = embedded
-        ? 'h-full overflow-y-auto px-6 py-6 space-y-6'
+        ? 'h-full min-h-0 overflow-y-auto px-6 py-6 pb-8 space-y-6'
         : 'flex-1 overflow-y-auto p-4 space-y-6 pb-32';
 
     if (userRole === 'client') {

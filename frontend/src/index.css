@@ -8,30 +8,30 @@
 
 /* ── Light Theme (default) ────────────────────────────────── */
 @theme {
-  --color-bg-primary: #f4efe6;
-  --color-bg-secondary: #fbf8f2;
-  --color-bg-panel: #fffdfa;
+  --color-bg-primary: #f6f3ed;
+  --color-bg-secondary: #fbf8f3;
+  --color-bg-panel: #fffdf8;
   --color-bg-card: #ffffff;
-  --color-bg-hover: #f3efe6;
-  --color-bg-glass: rgba(255, 251, 245, 0.78);
-  --color-bg-glass-strong: rgba(255, 252, 247, 0.92);
-  --color-bg-overlay: rgba(20, 28, 34, 0.3);
-  --color-border: rgba(119, 101, 76, 0.16);
-  --color-border-light: rgba(119, 101, 76, 0.28);
-  --color-border-glow: rgba(14, 116, 112, 0.24);
-  --color-text-primary: #17212b;
-  --color-text-secondary: #5f6b72;
-  --color-text-muted: #938979;
-  --color-accent: #0f766e;
-  --color-accent-glow: #115e59;
-  --color-accent-light: rgba(15, 118, 110, 0.12);
-  --color-gold: #b7791f;
-  --color-gold-light: rgba(183, 121, 31, 0.14);
-  --color-success: #15803d;
-  --color-warning: #b45309;
+  --color-bg-hover: #efe8df;
+  --color-bg-glass: rgba(255, 251, 245, 0.8);
+  --color-bg-glass-strong: rgba(255, 252, 247, 0.94);
+  --color-bg-overlay: rgba(13, 34, 43, 0.34);
+  --color-border: rgba(16, 63, 82, 0.14);
+  --color-border-light: rgba(16, 63, 82, 0.24);
+  --color-border-glow: rgba(47, 136, 164, 0.24);
+  --color-text-primary: #10222e;
+  --color-text-secondary: #56646d;
+  --color-text-muted: #7d807a;
+  --color-accent: #103f52;
+  --color-accent-glow: #14566d;
+  --color-accent-light: rgba(20, 86, 109, 0.12);
+  --color-gold: #2f88a4;
+  --color-gold-light: rgba(47, 136, 164, 0.14);
+  --color-success: #1e7a56;
+  --color-warning: #b86a2e;
   --color-danger: #b91c1c;
   --color-idle: #6b7280;
-  --color-surface-glow: rgba(15, 118, 110, 0.08);
+  --color-surface-glow: rgba(47, 136, 164, 0.1);
   --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
   --font-sans: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
   --font-display: 'Fraunces', Georgia, serif;
@@ -39,30 +39,30 @@
 
 /* ── Dark Theme ───────────────────────────────────────────── */
 :root[data-theme="dark"] {
-  --color-bg-primary: #091014;
-  --color-bg-secondary: #0d171c;
-  --color-bg-panel: #101c21;
-  --color-bg-card: #132128;
-  --color-bg-hover: #16262d;
-  --color-bg-glass: rgba(11, 18, 22, 0.74);
-  --color-bg-glass-strong: rgba(11, 18, 22, 0.9);
+  --color-bg-primary: #071218;
+  --color-bg-secondary: #0b1920;
+  --color-bg-panel: #0f2028;
+  --color-bg-card: #13262f;
+  --color-bg-hover: #17303b;
+  --color-bg-glass: rgba(8, 18, 24, 0.76);
+  --color-bg-glass-strong: rgba(8, 18, 24, 0.92);
   --color-bg-overlay: rgba(0, 0, 0, 0.55);
-  --color-border: rgba(185, 157, 120, 0.12);
-  --color-border-light: rgba(185, 157, 120, 0.24);
-  --color-border-glow: rgba(94, 234, 212, 0.28);
-  --color-text-primary: #edf3f1;
-  --color-text-secondary: #a2b0ae;
-  --color-text-muted: #61716f;
-  --color-accent: #5eead4;
-  --color-accent-glow: #2dd4bf;
-  --color-accent-light: rgba(94, 234, 212, 0.12);
-  --color-gold: #d4a75d;
-  --color-gold-light: rgba(212, 167, 93, 0.14);
+  --color-border: rgba(111, 199, 223, 0.12);
+  --color-border-light: rgba(111, 199, 223, 0.24);
+  --color-border-glow: rgba(155, 208, 227, 0.28);
+  --color-text-primary: #e8f2f5;
+  --color-text-secondary: #a7bcc4;
+  --color-text-muted: #647986;
+  --color-accent: #6fc7df;
+  --color-accent-glow: #9bd0e3;
+  --color-accent-light: rgba(111, 199, 223, 0.12);
+  --color-gold: #9bd0e3;
+  --color-gold-light: rgba(155, 208, 227, 0.14);
   --color-success: #4ade80;
-  --color-warning: #f59e0b;
+  --color-warning: #f0ac5f;
   --color-danger: #fb7185;
   --color-idle: #6b7280;
-  --color-surface-glow: rgba(94, 234, 212, 0.08);
+  --color-surface-glow: rgba(111, 199, 223, 0.1);
 }
 
 /* ── Base ──────────────────────────────────────────────────── */
@@ -74,8 +74,8 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top left, rgba(183, 121, 31, 0.08), transparent 30%),
-    radial-gradient(circle at top right, rgba(15, 118, 110, 0.1), transparent 28%),
+    radial-gradient(circle at top left, rgba(47, 136, 164, 0.08), transparent 30%),
+    radial-gradient(circle at top right, rgba(16, 63, 82, 0.1), transparent 28%),
     linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-primary) 100%);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
@@ -154,11 +154,11 @@ body {
    GLOW EFFECTS
    ══════════════════════════════════════════════════════════ */
 .glow-accent {
-  box-shadow: 0 0 20px var(--color-accent-light), 0 0 60px rgba(99, 102, 241, 0.06);
+  box-shadow: 0 0 20px var(--color-accent-light), 0 0 60px rgba(20, 86, 109, 0.08);
 }
 
 .glow-gold {
-  box-shadow: 0 0 20px var(--color-gold-light), 0 0 60px rgba(245, 158, 11, 0.06);
+  box-shadow: 0 0 20px var(--color-gold-light), 0 0 60px rgba(47, 136, 164, 0.08);
 }
 
 .glow-success {
@@ -494,7 +494,7 @@ body {
 }
 
 .btn-gold:hover {
-  box-shadow: 0 12px 32px var(--color-gold-light), 0 0 60px rgba(245, 158, 11, 0.1);
+  box-shadow: 0 12px 32px var(--color-gold-light), 0 0 60px rgba(47, 136, 164, 0.14);
   transform: translateY(-1px);
 }
 
@@ -638,7 +638,7 @@ aside {
 }
 
 .gradient-text-accent {
-  background: linear-gradient(135deg, var(--color-accent), #a78bfa);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-gold));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

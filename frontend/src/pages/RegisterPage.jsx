@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/client';
 import { getApiErrorMessage } from '../utils/apiError';
 import ThemeToggle from '../components/ThemeToggle';
-import { Factory, CheckCircle, Building2, User, Mail, FileText, ArrowRight, Sparkles } from 'lucide-react';
+import BrandLogo from '../components/BrandLogo';
+import { CheckCircle, Building2, User, Mail, FileText, ArrowRight, Sparkles } from 'lucide-react';
 
 const fadeUp = {
     hidden: { opacity: 0, y: 24 },
@@ -42,13 +43,7 @@ export default function RegisterPage() {
             <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col px-5 py-6 sm:px-8 lg:px-12">
                 <motion.header initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between">
                     <Link to="/" className="inline-flex items-center gap-3 group">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-white glow-accent group-hover:scale-105 transition-transform">
-                            <Factory size={18} />
-                        </div>
-                        <div>
-                            <p className="text-sm font-bold tracking-tight">MechTrack Pulse</p>
-                            <p className="text-[10px] text-text-muted font-mono uppercase tracking-widest">Company Onboarding</p>
-                        </div>
+                        <BrandLogo size="sm" title="MechTrackPulse" subtitle="Company Onboarding" />
                     </Link>
                     <div className="flex items-center gap-2">
                         <ThemeToggle />
