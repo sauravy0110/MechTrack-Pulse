@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import BrandLogo from './BrandLogo';
-import { ArrowRight, Brain, Cpu, RadioTower } from 'lucide-react';
+import { ArrowRight, Brain, RadioTower } from 'lucide-react';
 
 const ROLE_COPY = {
     owner: 'Strategic control for growth, execution, and business intelligence.',
@@ -33,21 +33,22 @@ export default function DashboardSectionMenu({
     const roleLabel = user?.role ? `${user.role.charAt(0).toUpperCase()}${user.role.slice(1)}` : 'Workspace';
 
     return (
-        <aside className="premium-surface flex h-full min-h-0 flex-col rounded-[32px] p-4 lg:p-5">
-            <div className="rounded-[28px] border border-border/70 bg-gradient-to-br from-white/75 via-white/35 to-accent/8 p-5">
+        <aside className="premium-surface flex flex-col rounded-[32px] p-4 lg:p-5">
+            <div className="rounded-[28px] border border-border/70 bg-gradient-to-br from-white/78 via-white/48 to-accent/8 p-5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Menu</p>
                 <BrandLogo
-                    size="md"
+                    size="sm"
                     title="MechTrackPulse"
                     subtitle="Precision. Progress. Performance."
-                    className="items-center"
-                    titleClassName="text-2xl"
+                    className="mt-3 items-center"
+                    titleClassName="text-xl"
                 />
                 <p className="mt-4 text-sm leading-6 text-text-secondary">
-                    {ROLE_COPY[user?.role] || 'Move through each business area one section at a time.'}
+                    {ROLE_COPY[user?.role] || 'Open one business area at a time from this menu.'}
                 </p>
             </div>
 
-            <div className="mt-5 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="mt-5 flex-1 pr-1">
                 <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">Sections</p>
                 <div className="mt-3 flex flex-col gap-2">
                     {sections.map((section) => {
@@ -60,7 +61,7 @@ export default function DashboardSectionMenu({
                                 whileHover={{ x: 2 }}
                                 whileTap={{ scale: 0.99 }}
                                 onClick={() => onChange(section.id)}
-                                className={`flex items-center justify-between rounded-[24px] px-4 py-3 text-left ${
+                                className={`flex items-center justify-between rounded-[24px] border px-4 py-3 text-left ${
                                     isActive ? 'section-pill-active' : 'section-pill'
                                 }`}
                             >
@@ -107,16 +108,6 @@ export default function DashboardSectionMenu({
                             <p className="truncate text-xs text-text-muted">{user?.email}</p>
                         </div>
                     </div>
-                </div>
-
-                <div className="rounded-[24px] border border-border/70 bg-gradient-to-br from-accent/10 via-transparent to-gold/8 px-4 py-4">
-                    <div className="flex items-center gap-2 text-accent">
-                        <Cpu size={14} />
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em]">Decluttered Mode</p>
-                    </div>
-                    <p className="mt-2 text-sm leading-6 text-text-secondary">
-                        Each section now opens its full workspace separately so the screen stays focused and easier to use.
-                    </p>
                 </div>
             </div>
         </aside>

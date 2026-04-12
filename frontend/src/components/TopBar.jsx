@@ -5,7 +5,11 @@ import ThemeToggle from './ThemeToggle';
 import BrandLogo from './BrandLogo';
 import { Brain, LogOut, Plus, RadioTower, UserPlus } from 'lucide-react';
 
-const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDescription = 'Focused workspace' }) {
+const TopBar = memo(function TopBar({
+    sectionTitle = 'Control Center',
+    sectionDescription = 'Focused workspace',
+    activeSection = 'overview',
+}) {
     const { user, logout } = useAuthStore();
     const wsStatus = useAppStore((state) => state.wsStatus);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
@@ -15,6 +19,8 @@ const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDe
 
     const canCreateTask = user?.role === 'owner' || user?.role === 'supervisor';
     const canManageUsers = user?.role === 'owner' || user?.role === 'supervisor';
+    const showCreateTask = canCreateTask && (activeSection === 'operations' || activeSection === 'tasks');
+    const showAddUser = canManageUsers && activeSection === 'team';
     const statusColor = wsStatus === 'connected' ? 'bg-success' : wsStatus === 'reconnecting' ? 'bg-warning animate-pulse' : 'bg-danger';
     const statusLabel = wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting' : 'Offline';
     const aiConnected = aiProviderStatus?.enabled === true;
@@ -23,20 +29,20 @@ const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDe
     const aiDot = aiConnected ? 'bg-success' : 'bg-danger';
 
     return (
-        <header className="dashboard-shell min-h-12 shrink-0 border-b border-border/70 px-4 py-3 sm:px-5 lg:px-6">
+        <header className="dashboard-shell sticky top-0 z-40 shrink-0 border-b border-border/70 px-4 py-3 sm:px-5 lg:px-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex min-w-0 items-center gap-4">
-                    <BrandLogo
-                        size="sm"
-                        title="MechTrackPulse"
-                        subtitle="Precision. Progress. Performance."
-                        className="min-w-0"
-                        titleClassName="text-xl"
-                        subtitleClassName="hidden xl:block"
-                    />
-                    <div className="hidden h-9 w-px bg-border lg:block" />
+                    <div className="lg:hidden">
+                        <BrandLogo
+                            size="sm"
+                            title="MechTrackPulse"
+                            subtitle="Precision. Progress. Performance."
+                            className="min-w-0"
+                            titleClassName="text-xl"
+                        />
+                    </div>
                     <div className="min-w-0">
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Focused section</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Workspace</p>
                         <div className="flex flex-wrap items-center gap-3">
                             <h1 className="font-display truncate text-2xl text-text-primary">{sectionTitle}</h1>
                             <p className="hidden text-sm text-text-secondary lg:block">{sectionDescription}</p>
@@ -64,7 +70,7 @@ const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDe
                         </div>
                     </div>
 
-                    {canCreateTask && (
+                    {showCreateTask && (
                         <button
                             type="button"
                             onClick={() => openCreateTaskModal()}
@@ -84,7 +90,7 @@ const TopBar = memo(function TopBar({ sectionTitle = 'Control Center', sectionDe
                         <Brain size={12} /> AI Assistant
                     </button>
 
-                    {canManageUsers && (
+                    {showAddUser && (
                         <button
                             type="button"
                             onClick={openAddUserModal}

@@ -215,15 +215,16 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     if (loadingOwnerBusiness && !ownerBusiness) {
         const shellClass = embedded
-            ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
+            ? 'premium-surface rounded-[28px] flex flex-col overflow-hidden'
             : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
+        const contentClass = embedded ? 'p-4 space-y-3' : 'flex-1 overflow-y-auto p-4 space-y-3';
         return (
             <aside className={shellClass}>
                 <div className="px-4 py-3 border-b border-border">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Owner Console</h2>
                     <p className="text-[10px] text-text-muted mt-1">Syncing business command center...</p>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div className={contentClass}>
                     {[0, 1, 2, 3].map((item) => (
                         <div key={item} className="glass-card rounded-2xl p-4">
                             <div className="h-3 w-20 animate-shimmer rounded-full" />
@@ -237,7 +238,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     if (!ownerBusiness) {
         const shellClass = embedded
-            ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
+            ? 'premium-surface rounded-[28px] flex flex-col overflow-hidden'
             : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
         return (
             <aside className={shellClass}>
@@ -259,8 +260,9 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
 
     const { company, subscription, tasks, machines, team, reports: reportsSummary, watchlist } = ownerBusiness;
     const shellClass = embedded
-        ? 'premium-surface h-full min-h-0 rounded-[28px] flex flex-col overflow-hidden'
+        ? 'premium-surface rounded-[28px] flex flex-col overflow-hidden'
         : 'w-80 glass border-l border-border flex flex-col shrink-0 overflow-hidden';
+    const contentClass = embedded ? 'p-4 space-y-4' : 'flex-1 overflow-y-auto p-4 space-y-4';
 
     return (
         <aside className={shellClass}>
@@ -283,7 +285,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className={contentClass}>
                 <div className="grid grid-cols-2 gap-2">
                     {summaryCards.map((card) => {
                         const Icon = card.icon;

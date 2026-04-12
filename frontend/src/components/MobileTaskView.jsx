@@ -48,7 +48,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     };
 
     const wrapperClass = embedded
-        ? 'h-full min-h-0 overflow-y-auto px-6 py-6 pb-8 space-y-5'
+        ? 'px-6 py-6 pb-8 space-y-5'
         : 'flex-1 overflow-y-auto p-4 space-y-4 pb-32';
 
     return (

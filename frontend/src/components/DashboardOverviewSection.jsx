@@ -182,8 +182,8 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
     }, [onSectionSelect, openAddUserModal, openCreateTaskModal, openGlobalAIModal, user?.role]);
 
     return (
-        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.95fr)]">
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.95fr)]">
+            <div className="space-y-4">
                 <section className="premium-surface rounded-[32px] p-6 lg:p-7">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
                         <div>
@@ -241,7 +241,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
                 </section>
             </div>
 
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-4">
                 <section className="premium-surface rounded-[32px] p-6">
                     <div className="flex items-center justify-between gap-3">
                         <div>

@@ -93,7 +93,7 @@ function ToastContainer() {
     };
 
     return (
-        <div className="pointer-events-none absolute right-4 top-20 z-50 flex flex-col gap-2">
+        <div className="pointer-events-none fixed right-4 top-20 z-50 flex flex-col gap-2">
             <AnimatePresence>
                 {alerts.map((alert) => (
                     <motion.div
@@ -227,8 +227,8 @@ function ProfileSection({ onSectionSelect }) {
     ];
 
     return (
-        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.15fr)_380px]">
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_380px]">
+            <div className="space-y-4">
                 <section className="premium-surface rounded-[32px] p-6 lg:p-7">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Account</p>
                     <h3 className="font-display mt-3 text-4xl leading-none text-text-primary">{user?.full_name}</h3>
@@ -283,7 +283,7 @@ function ProfileSection({ onSectionSelect }) {
                 </section>
             </div>
 
-            <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
+            <div className="space-y-4">
                 <section className="premium-surface rounded-[32px] p-6">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">Workspace health</p>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -322,11 +322,11 @@ function IntelligenceSection({ mode = 'supervisor' }) {
         : 'Insight cards will appear here as the AI engine detects delays, overload, or efficiency opportunities.';
 
     return (
-        <div className="grid h-full min-h-0 gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
-            <div className="premium-surface h-full min-h-0 overflow-hidden rounded-[32px]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_360px]">
+            <div className="premium-surface overflow-hidden rounded-[32px]">
                 <MobileStatsView embedded />
             </div>
-            <div className="premium-surface h-full min-h-0 overflow-y-auto rounded-[32px] p-6">
+            <div className="premium-surface rounded-[32px] p-6">
                 <div className="flex items-center justify-between gap-3">
                     <div>
                         <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-text-muted">AI insight rail</p>
@@ -447,11 +447,11 @@ export default function DashboardPage() {
                 return <DashboardOverviewSection onSectionSelect={setActiveSection} />;
             case 'operations':
                 return (
-                    <div className="flex h-full min-h-0 flex-col gap-4">
-                        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[18.5rem_minmax(0,1fr)] 2xl:grid-cols-[18.5rem_minmax(0,1fr)_22rem]">
+                    <div className="flex flex-col gap-4">
+                        <div className="grid gap-4 lg:grid-cols-[18.5rem_minmax(0,1fr)] 2xl:grid-cols-[18.5rem_minmax(0,1fr)_22rem]">
                             <LeftPanel embedded />
-                            <div className="flex min-h-0 flex-col gap-4">
-                                <div className="premium-surface min-h-[24rem] flex-1 overflow-hidden rounded-[32px]">
+                            <div className="flex flex-col gap-4">
+                                <div className="premium-surface min-h-[24rem] overflow-hidden rounded-[32px]">
                                     <Suspense fallback={<LoadingFallback />}>
                                         <FactoryScene />
                                     </Suspense>
@@ -472,7 +472,7 @@ export default function DashboardPage() {
             case 'tasks':
             case 'projects':
                 return (
-                    <div className="premium-surface h-full overflow-hidden rounded-[32px]">
+                    <div className="premium-surface overflow-hidden rounded-[32px]">
                         <MobileTaskView embedded />
                     </div>
                 );
@@ -492,8 +492,8 @@ export default function DashboardPage() {
     };
 
     return (
-        <div className="relative flex h-screen flex-col overflow-hidden bg-bg-primary">
-            <TopBar sectionTitle={headerTitle} sectionDescription={headerDescription} />
+        <div className="relative flex min-h-screen flex-col bg-bg-primary">
+            <TopBar sectionTitle={headerTitle} sectionDescription={headerDescription} activeSection={activeSection} />
             <ToastContainer />
             <FirstTimeHint />
 
@@ -504,7 +504,7 @@ export default function DashboardPage() {
                 {isGlobalAIModalOpen && <GlobalAIAssistantModal />}
             </AnimatePresence>
 
-            <div className="flex flex-1 overflow-hidden">
+            <div className="flex flex-1">
                 {isMobile ? (
                     <>
                         {activeTab === 'factory' && (
@@ -548,9 +548,9 @@ export default function DashboardPage() {
                         )}
                     </>
                 ) : (
-                    <div className="page-backdrop flex-1 overflow-hidden p-3 sm:p-4 lg:p-5">
-                        <div className="dashboard-shell grid h-full gap-4 rounded-[36px] p-3 sm:p-4 lg:grid-cols-[19rem_minmax(0,1fr)] lg:p-5">
-                            <div className="hidden min-h-0 lg:block">
+                    <div className="page-backdrop flex-1 p-3 sm:p-4 lg:p-5">
+                        <div className="grid items-start gap-4 lg:grid-cols-[19rem_minmax(0,1fr)]">
+                            <div className="hidden lg:sticky lg:top-[6.5rem] lg:block">
                                 <DashboardSectionMenu
                                     activeSection={activeSection}
                                     sections={sections}
@@ -561,7 +561,7 @@ export default function DashboardPage() {
                                 />
                             </div>
 
-                            <div className="min-h-0 flex flex-col gap-4 overflow-hidden">
+                            <div className="min-w-0 space-y-4">
                                 <div className="overflow-x-auto lg:hidden">
                                     <div className="flex gap-2 pb-1">
                                         {sections.map((section) => (
@@ -579,27 +579,18 @@ export default function DashboardPage() {
                                     </div>
                                 </div>
 
-                                <div className="premium-surface shrink-0 rounded-[32px] px-6 py-5">
-                                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                                <div className="premium-surface rounded-[32px] px-6 py-6">
+                                    <div className="flex flex-col gap-3">
                                         <div>
-                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Focused section</p>
+                                            <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-accent">Menu selected</p>
                                             <h2 className="panel-title mt-3 text-text-primary">{currentSection?.label || 'Dashboard'}</h2>
-                                            <p className="mt-3 max-w-2xl text-sm leading-6 text-text-secondary">{currentSection?.description || 'Open one business area at a time for a cleaner experience.'}</p>
+                                            <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary">
+                                                {currentSection?.description || 'Open one business area at a time for a cleaner experience.'}
+                                            </p>
                                         </div>
-                                        <div className="flex flex-wrap gap-2">
-                                            {sections.map((section) => (
-                                                <button
-                                                    key={section.id}
-                                                    type="button"
-                                                    onClick={() => setActiveSection(section.id)}
-                                                    className={`rounded-full px-4 py-2 text-[11px] font-semibold ${
-                                                        activeSection === section.id ? 'section-pill-active' : 'section-pill'
-                                                    }`}
-                                                >
-                                                    {section.label}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        <p className="text-xs leading-6 text-text-muted">
+                                            Use the left-side menu to move between full workspace sections instead of stacking every tool on one screen.
+                                        </p>
                                     </div>
                                 </div>
 
@@ -610,7 +601,7 @@ export default function DashboardPage() {
                                         animate={{ opacity: 1, y: 0 }}
                                         exit={{ opacity: 0, y: -10 }}
                                         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-                                        className="min-h-0 flex-1 overflow-y-auto pr-1"
+                                        className="space-y-4"
                                     >
                                         {renderDesktopSection()}
                                     </motion.div>
