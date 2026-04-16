@@ -235,6 +235,7 @@ def get_ai_provider_status(
     return {
         "enabled": status.get("enabled", False),
         "configured": status.get("configured", False),
+        "vision_enabled": status.get("vision_enabled", False),
         "base_url": status.get("base_url"),
         "models": status.get("models", {}),
         "error": status.get("error"),
