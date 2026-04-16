@@ -102,7 +102,8 @@ CRITICAL EXTRACTION RULES
 EXTRACTION REQUIREMENTS
 ========================
 
-Extract the following categories:
+Extract ALL visible dimensions from the drawing.
+You MUST extract:
 
 1. Linear dimensions (lengths, steps, total length)
 2. Diameters (Ø values)
@@ -111,6 +112,9 @@ Extract the following categories:
 5. Angles (if present)
 6. Notes / annotations (exact text)
 7. Feature-specific dimensions (slots, keyways, holes)
+
+Do NOT return only one category.
+If multiple numbers exist in a category, include ALL of them in reading order.
 
 ========================
 STRUCTURING RULES
@@ -327,6 +331,18 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
     return unique
 
 
+def _normalize_numeric_sequence(values: Any, *, dedupe: bool = True) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized = [_stringify_value(value) for value in values]
+    filtered = [value for value in normalized if value]
+    return _dedupe_preserve_order(filtered) if dedupe else filtered
+
+
+def _context_window(text: str, start: int, end: int, *, radius: int = 20) -> str:
+    return text[max(0, start - radius):min(len(text), end + radius)]
+
+
 def parse_dimensions(text: str | None) -> dict[str, list[str]]:
     if not text or not text.strip():
         return {
@@ -358,10 +374,15 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
     lengths: list[str] = []
     for match in re.finditer(r"\b\d+(?:\.\d+)?\b", normalized_text):
         value = match.group(0)
+        decimal_value = _to_decimal(value)
+        if decimal_value is None or decimal_value < Decimal("1") or decimal_value > Decimal("500"):
+            continue
+
         start = match.start()
         end = match.end()
-        prefix = normalized_text[max(0, start - 2):start]
-        suffix = normalized_text[end:end + 3]
+        prefix = normalized_text[max(0, start - 4):start]
+        suffix = normalized_text[end:end + 8]
+        context = _context_window(normalized_text, start, end)
         if "Ø" in prefix or "⌀" in prefix:
             continue
         if re.search(r"\bR\s*$", prefix, flags=re.IGNORECASE):
@@ -370,14 +391,86 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
             continue
         if "°" in suffix or suffix.lower().startswith("deg"):
             continue
+        if re.search(r"\b(?:runout|concentricity|roughness|tolerance|tol|ra)\b", context, flags=re.IGNORECASE):
+            continue
         lengths.append(value)
 
     return {
-        "lengths_mm": _dedupe_preserve_order(lengths),
+        "lengths_mm": lengths,
         "diameters_mm": diameters,
         "radii_mm": radii,
         "threads": threads,
         "angles_deg": angles,
+    }
+
+
+def _parse_feature_dimensions_from_text(text: str | None) -> dict[str, list[dict[str, str | None]]]:
+    if not text or not text.strip():
+        return {"keyways": [], "slots": []}
+
+    normalized_text = " ".join(text.split())
+
+    keyway_combined = re.search(
+        r"keyway(?:\s*size)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+        normalized_text,
+        flags=re.IGNORECASE,
+    )
+    keyway_width = re.search(
+        r"keyway(?:\s*width)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+        normalized_text,
+        flags=re.IGNORECASE,
+    )
+    keyway_depth = re.search(
+        r"keyway\s*depth\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+        normalized_text,
+        flags=re.IGNORECASE,
+    )
+
+    keyways: list[dict[str, str | None]] = []
+    if keyway_combined or keyway_width or keyway_depth:
+        keyways.append({
+            "width_mm": keyway_combined.group(1) if keyway_combined else (keyway_width.group(1) if keyway_width else None),
+            "depth_mm": keyway_combined.group(2) if keyway_combined else (keyway_depth.group(1) if keyway_depth else None),
+        })
+
+    slots: list[dict[str, str | None]] = []
+    for match in re.finditer(
+        r"slot(?:\s*size)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:mm)?(?:\s*[x×]\s*(\d+(?:\.\d+)?)\s*(?:mm)?)?",
+        normalized_text,
+        flags=re.IGNORECASE,
+    ):
+        slots.append({
+            "width_mm": match.group(1),
+            "length_mm": match.group(2),
+            "end_radius_mm": match.group(3),
+        })
+
+    if not slots:
+        slot_width = re.search(
+            r"slot\s*width\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+            normalized_text,
+            flags=re.IGNORECASE,
+        )
+        slot_length = re.search(
+            r"slot\s*length\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+            normalized_text,
+            flags=re.IGNORECASE,
+        )
+        slot_radius = re.search(
+            r"(?:slot\s*)?(?:end\s*radius|slot\s*radius)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+            normalized_text,
+            flags=re.IGNORECASE,
+        )
+        if slot_width or slot_length or slot_radius:
+            slots.append({
+                "width_mm": slot_width.group(1) if slot_width else None,
+                "length_mm": slot_length.group(1) if slot_length else None,
+                "end_radius_mm": slot_radius.group(1) if slot_radius else None,
+            })
+
+    return {
+        "keyways": keyways,
+        "slots": slots,
     }
 
 
@@ -425,10 +518,7 @@ def confidence_score(value: str | None, text: str | None, *, high: bool = True) 
 
 
 def _normalize_numeric_list(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    normalized = [_stringify_value(value) for value in values]
-    return _dedupe_preserve_order([value for value in normalized if value])
+    return _normalize_numeric_sequence(values, dedupe=True)
 
 
 def _normalize_thread_list(values: Any) -> list[str]:
@@ -463,26 +553,41 @@ def _normalize_ocr_payload(payload: Any, fallback_text: str | None = None) -> di
     raw_text = _stringify_value(payload.get("raw_text")) if isinstance(payload, dict) else None
     raw_text = raw_text or _stringify_value(fallback_text) or ""
     parsed_dimensions = parse_dimensions(raw_text)
+    parsed_features = _parse_feature_dimensions_from_text(raw_text)
 
     dimensions = payload.get("dimensions") if isinstance(payload, dict) and isinstance(payload.get("dimensions"), dict) else {}
     features = payload.get("features") if isinstance(payload, dict) and isinstance(payload.get("features"), dict) else {}
     tolerances = payload.get("tolerances") if isinstance(payload, dict) and isinstance(payload.get("tolerances"), dict) else {}
     confidence = payload.get("confidence") if isinstance(payload, dict) and isinstance(payload.get("confidence"), dict) else {}
 
+    explicit_lengths = _normalize_numeric_sequence(dimensions.get("lengths_mm"), dedupe=False)
+    explicit_diameters = _normalize_numeric_sequence(dimensions.get("diameters_mm"), dedupe=True)
+    explicit_radii = _normalize_numeric_sequence(dimensions.get("radii_mm"), dedupe=True)
+    explicit_angles = _normalize_numeric_sequence(dimensions.get("angles_deg"), dedupe=True)
+    explicit_keyways = _normalize_feature_items(features.get("keyways"), ("width_mm", "depth_mm"))
+    explicit_slots = _normalize_feature_items(features.get("slots"), ("width_mm", "length_mm", "end_radius_mm"))
+
+    selected_lengths = parsed_dimensions["lengths_mm"] if len(parsed_dimensions["lengths_mm"]) > len(explicit_lengths) else (explicit_lengths or parsed_dimensions["lengths_mm"])
+    selected_diameters = parsed_dimensions["diameters_mm"] if len(parsed_dimensions["diameters_mm"]) > len(explicit_diameters) else (explicit_diameters or parsed_dimensions["diameters_mm"])
+    selected_radii = parsed_dimensions["radii_mm"] if len(parsed_dimensions["radii_mm"]) > len(explicit_radii) else (explicit_radii or parsed_dimensions["radii_mm"])
+    selected_angles = parsed_dimensions["angles_deg"] if len(parsed_dimensions["angles_deg"]) > len(explicit_angles) else (explicit_angles or parsed_dimensions["angles_deg"])
+    selected_keyways = parsed_features["keyways"] if len(parsed_features["keyways"]) > len(explicit_keyways) else (explicit_keyways or parsed_features["keyways"])
+    selected_slots = parsed_features["slots"] if len(parsed_features["slots"]) > len(explicit_slots) else (explicit_slots or parsed_features["slots"])
+
     normalized_dimensions = {
-        "lengths_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("lengths_mm")) + parsed_dimensions["lengths_mm"]),
-        "diameters_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("diameters_mm")) + parsed_dimensions["diameters_mm"]),
-        "radii_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("radii_mm")) + parsed_dimensions["radii_mm"]),
-        "threads": _dedupe_preserve_order(_normalize_thread_list(dimensions.get("threads")) + parsed_dimensions["threads"]),
-        "angles_deg": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("angles_deg")) + parsed_dimensions["angles_deg"]),
+        "lengths_mm": selected_lengths,
+        "diameters_mm": selected_diameters,
+        "radii_mm": selected_radii,
+        "threads": _normalize_thread_list(dimensions.get("threads")) or parsed_dimensions["threads"],
+        "angles_deg": selected_angles,
     }
 
     return {
         "raw_text": raw_text,
         "dimensions": normalized_dimensions,
         "features": {
-            "keyways": _normalize_feature_items(features.get("keyways"), ("width_mm", "depth_mm")),
-            "slots": _normalize_feature_items(features.get("slots"), ("width_mm", "length_mm", "end_radius_mm")),
+            "keyways": selected_keyways,
+            "slots": selected_slots,
         },
         "tolerances": {
             "surface_roughness_Ra": _stringify_value(tolerances.get("surface_roughness_Ra")),
@@ -528,6 +633,38 @@ def _candidate_from_source(
     }
 
 
+def _remove_single_occurrence(values: list[str], value_to_remove: str | None) -> list[str]:
+    if not value_to_remove:
+        return list(values)
+
+    remaining = list(values)
+    for index, value in enumerate(remaining):
+        if value == value_to_remove:
+            del remaining[index]
+            break
+    return remaining
+
+
+def _append_numbered_candidates(
+    candidates: list[dict[str, Any]],
+    *,
+    existing_field_names: set[str],
+    values: list[str],
+    field_name_builder,
+    unit: str,
+    source_type: str,
+    start_index: int = 1,
+) -> None:
+    for offset, value in enumerate(values, start=start_index):
+        field_name = field_name_builder(offset)
+        if field_name in existing_field_names:
+            continue
+        candidate = _candidate_from_source(field_name, value, unit, source_type=source_type)
+        if candidate:
+            candidates.append(candidate)
+            existing_field_names.add(field_name)
+
+
 def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     raw_text = ocr_payload.get("raw_text", "")
     labelled_specs = {
@@ -536,39 +673,112 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
     }
 
     candidates: list[dict[str, Any]] = list(labelled_specs.values())
+    existing_field_names = set(labelled_specs)
     lengths = ocr_payload.get("dimensions", {}).get("lengths_mm", [])
     diameters = ocr_payload.get("dimensions", {}).get("diameters_mm", [])
+    radii = ocr_payload.get("dimensions", {}).get("radii_mm", [])
     threads = ocr_payload.get("dimensions", {}).get("threads", [])
     keyways = ocr_payload.get("features", {}).get("keyways", [])
+    slots = ocr_payload.get("features", {}).get("slots", [])
     tolerances = ocr_payload.get("tolerances", {})
 
-    if "Overall_Length" not in labelled_specs and len(lengths) == 1:
+    overall_length_value = labelled_specs.get("Overall_Length", {}).get("ai_value")
+    infer_overall_length = (
+        len(lengths) == 1
+        or bool(re.search(r"\b(?:overall|o\/?a|total)\s*length\b", raw_text, flags=re.IGNORECASE))
+        or (len(lengths) > 1 and validate_length_chain(lengths[1:], lengths[0]))
+    )
+    if "Overall_Length" not in labelled_specs and lengths and infer_overall_length:
         candidate = _candidate_from_source("Overall_Length", lengths[0], "mm", source_type="ocr_dimensions")
         if candidate:
             candidates.append(candidate)
+            existing_field_names.add("Overall_Length")
+            overall_length_value = lengths[0]
 
     for index, field_name in enumerate(("Diameter_1_OD", "Diameter_2_OD", "Diameter_3_OD")):
-        if field_name in labelled_specs or index >= len(diameters):
+        if field_name in existing_field_names or index >= len(diameters):
             continue
         candidate = _candidate_from_source(field_name, diameters[index], "mm", source_type="ocr_dimensions")
         if candidate:
             candidates.append(candidate)
+            existing_field_names.add(field_name)
 
-    if "Thread_Spec" not in labelled_specs and threads:
+    if len(diameters) > 3:
+        _append_numbered_candidates(
+            candidates,
+            existing_field_names=existing_field_names,
+            values=diameters[3:],
+            field_name_builder=lambda idx: f"Diameter_{idx}_OD",
+            unit="mm",
+            source_type="ocr_dimensions",
+            start_index=4,
+        )
+
+    if "Thread_Spec" not in existing_field_names and threads:
         candidate = _candidate_from_source("Thread_Spec", threads[0], "", source_type="ocr_dimensions")
         if candidate:
             candidates.append(candidate)
+            existing_field_names.add("Thread_Spec")
+
+    if radii:
+        _append_numbered_candidates(
+            candidates,
+            existing_field_names=existing_field_names,
+            values=radii,
+            field_name_builder=lambda idx: f"Radius_{idx}",
+            unit="mm",
+            source_type="ocr_dimensions",
+        )
+
+    remaining_lengths = _remove_single_occurrence(lengths, overall_length_value)
+    if remaining_lengths:
+        _append_numbered_candidates(
+            candidates,
+            existing_field_names=existing_field_names,
+            values=remaining_lengths,
+            field_name_builder=lambda idx: f"Linear_Length_{idx}",
+            unit="mm",
+            source_type="ocr_dimensions",
+        )
 
     if keyways:
         first_keyway = keyways[0]
-        if "Keyway_Width" not in labelled_specs:
+        if "Keyway_Width" not in existing_field_names:
             candidate = _candidate_from_source("Keyway_Width", first_keyway.get("width_mm"), "mm", source_type="feature")
             if candidate:
                 candidates.append(candidate)
-        if "Keyway_Depth" not in labelled_specs:
+                existing_field_names.add("Keyway_Width")
+        if "Keyway_Depth" not in existing_field_names:
             candidate = _candidate_from_source("Keyway_Depth", first_keyway.get("depth_mm"), "mm", source_type="feature")
             if candidate:
                 candidates.append(candidate)
+                existing_field_names.add("Keyway_Depth")
+
+        for index, keyway in enumerate(keyways[1:], start=2):
+            for suffix, payload_key in (("Width", "width_mm"), ("Depth", "depth_mm")):
+                field_name = f"Keyway_{index}_{suffix}"
+                if field_name in existing_field_names:
+                    continue
+                candidate = _candidate_from_source(field_name, keyway.get(payload_key), "mm", source_type="feature")
+                if candidate:
+                    candidates.append(candidate)
+                    existing_field_names.add(field_name)
+
+    if slots:
+        for index, slot in enumerate(slots, start=1):
+            slot_field_map = (
+                ("Width", "width_mm"),
+                ("Length", "length_mm"),
+                ("End_Radius", "end_radius_mm"),
+            )
+            for suffix, payload_key in slot_field_map:
+                field_name = f"Slot_{index}_{suffix}"
+                if field_name in existing_field_names:
+                    continue
+                candidate = _candidate_from_source(field_name, slot.get(payload_key), "mm", source_type="feature")
+                if candidate:
+                    candidates.append(candidate)
+                    existing_field_names.add(field_name)
 
     tolerance_map = {
         "Surface_Roughness": ("surface_roughness_Ra", "Ra"),
@@ -576,11 +786,12 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
         "Concentricity_Tolerance": ("concentricity_mm", "mm"),
     }
     for field_name, (payload_key, unit) in tolerance_map.items():
-        if field_name in labelled_specs:
+        if field_name in existing_field_names:
             continue
         candidate = _candidate_from_source(field_name, tolerances.get(payload_key), unit, source_type="tolerance")
         if candidate:
             candidates.append(candidate)
+            existing_field_names.add(field_name)
 
     validated_specs: list[dict[str, Any]] = []
     rejected_fields: list[dict[str, str]] = []

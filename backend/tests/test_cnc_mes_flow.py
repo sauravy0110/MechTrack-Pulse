@@ -203,6 +203,46 @@ def test_strict_ocr_pipeline_normalizes_threads_and_validation_states():
     assert summary["review_counts"]["invalid"] == 0
 
 
+def test_ocr_pipeline_persists_all_visible_dimension_categories():
+    ocr_payload = _normalize_ocr_payload(
+        {
+            "raw_text": (
+                "Overall length 70 mm, step lengths 20 25 40 20 5 20, "
+                "Ø28 Ø30 Ø35 Ø40 Ø44 Ø34 Ø30, R6 R5, slot 12 x 40 x 6, keyway 8 x 4"
+            ),
+            "dimensions": {
+                "diameters_mm": [28, 30, 35, 40, 44, 34],
+            },
+            "confidence": {
+                "overall": 0.92,
+                "comment": "multiple dimensions visible",
+            },
+        }
+    )
+
+    specs, summary = _build_specs_from_ocr_payload(ocr_payload)
+    specs_map = {item["field_name"]: item for item in specs}
+
+    assert specs_map["Overall_Length"]["ai_value"] == "70"
+    assert specs_map["Linear_Length_1"]["ai_value"] == "20"
+    assert specs_map["Linear_Length_2"]["ai_value"] == "25"
+    assert specs_map["Linear_Length_3"]["ai_value"] == "40"
+    assert specs_map["Linear_Length_4"]["ai_value"] == "20"
+    assert specs_map["Linear_Length_5"]["ai_value"] == "5"
+    assert specs_map["Linear_Length_6"]["ai_value"] == "20"
+    assert specs_map["Diameter_4_OD"]["ai_value"] == "40"
+    assert specs_map["Diameter_5_OD"]["ai_value"] == "44"
+    assert specs_map["Diameter_6_OD"]["ai_value"] == "34"
+    assert specs_map["Radius_1"]["ai_value"] == "6"
+    assert specs_map["Radius_2"]["ai_value"] == "5"
+    assert specs_map["Slot_1_Width"]["ai_value"] == "12"
+    assert specs_map["Slot_1_Length"]["ai_value"] == "40"
+    assert specs_map["Slot_1_End_Radius"]["ai_value"] == "6"
+    assert specs_map["Keyway_Width"]["ai_value"] == "8"
+    assert specs_map["Keyway_Depth"]["ai_value"] == "4"
+    assert summary["review_counts"]["invalid"] == 0
+
+
 def test_invalid_specs_require_human_value_before_confirm_all(client, platform_admin_token):
     owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
     task = create_task(client, owner_token, "Manual Review Gate", machine_id, operator_id)
