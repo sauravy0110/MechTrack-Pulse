@@ -2,14 +2,14 @@
 MechTrack Pulse — Task Model
 
 Company-scoped task with lifecycle tracking.
-Status: idle → in_progress → completed | delayed
+Status: idle → queued → in_progress → paused → completed → delayed → rework
 Priority: low, medium, high, critical
 """
 
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -34,10 +34,14 @@ class Task(Base):
     description = Column(Text, nullable=True)
 
     status = Column(
-        String(20),
+        String(30),
         nullable=False,
         default="idle",
-        doc="idle | queued | in_progress | paused | completed | delayed",
+        doc=(
+            "General: idle | queued | in_progress | paused | completed | delayed | "
+            "CNC: created | planned | ready | assigned | setup | setup_done | "
+            "first_piece_approval | qc_check | final_inspection | dispatched"
+        ),
     )
     
     # ── Time Tracking & Issue Reporting ──────────────────────
@@ -74,6 +78,16 @@ class Task(Base):
         nullable=True,
     )
 
+    # ── CNC Specific Fields ──────────────────────────────────
+    is_locked = Column(Boolean, default=False, nullable=False)
+    rework_flag = Column(Boolean, default=False, nullable=False)
+    rework_iteration = Column(Integer, default=0, nullable=False)
+    drawing_url = Column(String(512), nullable=True)
+    material_type = Column(String(100), nullable=True)
+    material_batch = Column(String(100), nullable=True)
+    part_name = Column(String(255), nullable=True)
+    rework_reason = Column(Text, nullable=True, doc="Reason for most recent rework trigger")
+
     # ── Timeline ─────────────────────────────────────────────
     estimated_completion = Column(DateTime(timezone=True), nullable=True)
     actual_completion = Column(DateTime(timezone=True), nullable=True)
@@ -100,6 +114,8 @@ class Task(Base):
     machine = relationship("Machine", back_populates="tasks")
     logs = relationship("TaskLog", back_populates="task", lazy="dynamic")
     images = relationship("TaskImage", back_populates="task", lazy="dynamic")
+    job_specs = relationship("JobSpec", back_populates="task", lazy="dynamic", cascade="all, delete-orphan")
+    job_processes = relationship("JobProcess", back_populates="task", order_by="JobProcess.sequence_order", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Task {self.title} [{self.status}] company={self.company_id}>"

@@ -14,9 +14,11 @@ const TopBar = memo(function TopBar({
     const wsStatus = useAppStore((state) => state.wsStatus);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
     const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
     const openGlobalAIModal = useAppStore((state) => state.openGlobalAIModal);
 
+    const isSupervisor = user?.role === 'supervisor';
     const canCreateTask = user?.role === 'owner' || user?.role === 'supervisor';
     const canManageUsers = user?.role === 'owner' || user?.role === 'supervisor';
     const showCreateTask = canCreateTask && (activeSection === 'operations' || activeSection === 'tasks');
@@ -73,10 +75,10 @@ const TopBar = memo(function TopBar({
                     {showCreateTask && (
                         <button
                             type="button"
-                            onClick={() => openCreateTaskModal()}
+                            onClick={() => isSupervisor ? openJobCreationModal() : openCreateTaskModal()}
                             className="btn-primary rounded-full px-4 py-2 text-xs font-semibold inline-flex items-center gap-1.5"
                         >
-                            <Plus size={12} /> Create Task
+                            <Plus size={12} /> {isSupervisor ? 'Create Job' : 'Create Task'}
                         </button>
                     )}
 

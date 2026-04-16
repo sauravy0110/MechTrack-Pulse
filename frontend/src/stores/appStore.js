@@ -640,6 +640,258 @@ const useAppStore = create((set, get) => ({
         });
         return maxRisk;
     },
+
+    // ── CNC Job State ────────────────────────────────────
+    jobSpecs: {},           // { [taskId]: { specs, is_locked, all_confirmed } }
+    jobProcesses: {},       // { [taskId]: { operations, total_cycle_time_minutes } }
+    loadingJobSpecs: false,
+    loadingJobProcesses: false,
+    lockingJob: false,
+    triggeringRework: false,
+    isJobCreationModalOpen: false,
+
+    openJobCreationModal: () => set({ isJobCreationModalOpen: true }),
+    closeJobCreationModal: () => set({ isJobCreationModalOpen: false }),
+
+    // ── Create CNC Job (full flow) ───────────────────────
+    createCNCJob: async ({ title, description, priority, client_id, machine_id, part_name, material_type, material_batch, drawing_url, estimated_completion }) => {
+        set({ creatingTask: true });
+        try {
+            // Step 1: Create the base task
+            const { data } = await api.post('/tasks/', {
+                title,
+                description: description || null,
+                machine_id: machine_id || null,
+                priority: priority || 'medium',
+                client_id: client_id || null,
+                estimated_completion: estimated_completion || null,
+            });
+
+            // Step 2: Set CNC-specific fields
+            if (part_name || material_type || material_batch || drawing_url) {
+                const { data: cncData } = await api.patch(`/tasks/${data.id}/cnc-fields`, {
+                    part_name: part_name || null,
+                    material_type: material_type || null,
+                    material_batch: material_batch || null,
+                    drawing_url: drawing_url || null,
+                });
+                Object.assign(data, cncData);
+            }
+
+            set((state) => ({
+                creatingTask: false,
+                tasks: state.tasks.some((t) => t.id === data.id)
+                    ? state.tasks.map((t) => (t.id === data.id ? { ...t, ...data } : t))
+                    : [data, ...state.tasks],
+                selectedTask: data,
+            }));
+
+            get().addAlert(`Job "${data.title}" created. Now extract drawing specs.`, 'success');
+            await get().fetchDashboard();
+            return data;
+        } catch (error) {
+            set({ creatingTask: false });
+            throw new Error(getApiErrorMessage(error, 'Unable to create job right now.'));
+        }
+    },
+
+    // ── Job Specs ────────────────────────────────────────
+    fetchJobSpecs: async (taskId) => {
+        set({ loadingJobSpecs: true });
+        try {
+            const { data } = await api.get(`/job-specs/${taskId}`);
+            set((state) => ({
+                jobSpecs: { ...state.jobSpecs, [taskId]: data },
+                loadingJobSpecs: false,
+            }));
+            return data;
+        } catch (error) {
+            void error;
+            set({ loadingJobSpecs: false });
+            return null;
+        }
+    },
+
+    extractJobSpecs: async (taskId, { drawing_context, part_name }) => {
+        try {
+            const { data } = await api.post(`/job-specs/${taskId}/extract`, {
+                drawing_context,
+                part_name,
+            });
+            set((state) => ({
+                jobSpecs: {
+                    ...state.jobSpecs,
+                    [taskId]: { ...state.jobSpecs[taskId], specs: data.specs, all_confirmed: false },
+                },
+            }));
+            get().addAlert(data.message || 'AI extraction complete.', data.source === 'ai_llm' ? 'success' : 'info');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'AI extraction failed.'));
+        }
+    },
+
+    updateJobSpec: async (specId, { human_value, is_confirmed }) => {
+        try {
+            const { data } = await api.patch(`/job-specs/spec/${specId}`, { human_value, is_confirmed });
+            // Update in local state
+            set((state) => {
+                const newJobSpecs = { ...state.jobSpecs };
+                Object.keys(newJobSpecs).forEach((taskId) => {
+                    if (newJobSpecs[taskId]?.specs) {
+                        newJobSpecs[taskId] = {
+                            ...newJobSpecs[taskId],
+                            specs: newJobSpecs[taskId].specs.map((s) =>
+                                s.id === specId ? { ...s, ...data } : s
+                            ),
+                        };
+                    }
+                });
+                return { jobSpecs: newJobSpecs };
+            });
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to update spec.'));
+        }
+    },
+
+    confirmAllSpecs: async (taskId) => {
+        try {
+            const { data } = await api.post(`/job-specs/${taskId}/confirm-all`);
+            set((state) => ({
+                jobSpecs: {
+                    ...state.jobSpecs,
+                    [taskId]: {
+                        ...state.jobSpecs[taskId],
+                        all_confirmed: true,
+                        specs: (state.jobSpecs[taskId]?.specs || []).map((s) => ({
+                            ...s,
+                            is_confirmed: true,
+                            human_value: s.human_value || s.ai_value,
+                        })),
+                    },
+                },
+            }));
+            get().addAlert(data.message || 'All specs confirmed.', 'success');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to confirm specs.'));
+        }
+    },
+
+    // ── Lock Job ─────────────────────────────────────────
+    lockJob: async (taskId) => {
+        set({ lockingJob: true });
+        try {
+            const { data } = await api.post(`/tasks/${taskId}/lock`);
+            // Update task in store
+            set((state) => ({
+                lockingJob: false,
+                tasks: state.tasks.map((t) =>
+                    t.id === taskId ? { ...t, is_locked: true, status: 'created' } : t
+                ),
+                selectedTask: state.selectedTask?.id === taskId
+                    ? { ...state.selectedTask, is_locked: true, status: 'created' }
+                    : state.selectedTask,
+            }));
+            get().addAlert('Job locked. Process planning ready.', 'success');
+            return data;
+        } catch (error) {
+            set({ lockingJob: false });
+            throw new Error(getApiErrorMessage(error, 'Unable to lock job.'));
+        }
+    },
+
+    // ── Job Processes ────────────────────────────────────
+    fetchJobProcesses: async (taskId) => {
+        set({ loadingJobProcesses: true });
+        try {
+            const { data } = await api.get(`/job-processes/${taskId}`);
+            set((state) => ({
+                jobProcesses: { ...state.jobProcesses, [taskId]: data },
+                loadingJobProcesses: false,
+            }));
+            return data;
+        } catch (error) {
+            void error;
+            set({ loadingJobProcesses: false });
+            return null;
+        }
+    },
+
+    aiSuggestProcesses: async (taskId) => {
+        try {
+            const { data } = await api.post(`/job-processes/${taskId}/suggest`);
+            set((state) => ({
+                jobProcesses: {
+                    ...state.jobProcesses,
+                    [taskId]: { ...state.jobProcesses[taskId], operations: data.operations },
+                },
+            }));
+            get().addAlert(data.message || 'AI process plan suggested.', 'success');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'AI suggestion failed.'));
+        }
+    },
+
+    validateProcessPlan: async (taskId) => {
+        try {
+            const { data } = await api.post(`/job-processes/${taskId}/validate`);
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Validation failed.'));
+        }
+    },
+
+    lockProcessPlan: async (taskId) => {
+        try {
+            const { data } = await api.post(`/job-processes/${taskId}/lock`);
+            set((state) => ({
+                tasks: state.tasks.map((t) =>
+                    t.id === taskId ? { ...t, status: data.status } : t
+                ),
+                selectedTask: state.selectedTask?.id === taskId
+                    ? { ...state.selectedTask, status: data.status }
+                    : state.selectedTask,
+            }));
+            get().addAlert('Process plan locked. Job status → planned.', 'success');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to lock process plan.'));
+        }
+    },
+
+    // ── Trigger Rework ───────────────────────────────────
+    triggerRework: async (taskId, { rework_reason, reassign_to }) => {
+        set({ triggeringRework: true });
+        try {
+            const { data } = await api.post(`/tasks/${taskId}/rework`, {
+                rework_reason,
+                reassign_to: reassign_to || null,
+            });
+            set((state) => ({
+                triggeringRework: false,
+                tasks: state.tasks.map((t) =>
+                    t.id === taskId ? {
+                        ...t,
+                        rework_flag: true,
+                        rework_iteration: data.rework_iteration,
+                        rework_reason: rework_reason,
+                        status: 'in_progress',
+                    } : t
+                ),
+                selectedTask: state.selectedTask?.id === taskId
+                    ? { ...state.selectedTask, rework_flag: true, rework_iteration: data.rework_iteration, status: 'in_progress' }
+                    : state.selectedTask,
+            }));
+            get().addAlert(`Rework triggered (iteration #${data.rework_iteration}).`, 'warning');
+            return data;
+        } catch (error) {
+            set({ triggeringRework: false });
+            throw new Error(getApiErrorMessage(error, 'Unable to trigger rework.'));
+        }
+    },
 }));
 
 export default useAppStore;

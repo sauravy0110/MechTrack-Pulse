@@ -30,6 +30,7 @@ import MobileStatsView from '../components/MobileStatsView';
 import DashboardSectionMenu from '../components/DashboardSectionMenu';
 import DashboardOverviewSection from '../components/DashboardOverviewSection';
 import OwnerBusinessPanel from '../components/OwnerBusinessPanel';
+import JobCreationModal from '../components/JobCreationModal';
 
 const FactoryScene = lazy(() => import('../components/FactoryScene'));
 
@@ -42,11 +43,11 @@ const DESKTOP_SECTIONS = {
         { id: 'business', label: 'Business', description: 'Reports, owner intelligence, and exports', icon: LineChart },
     ],
     supervisor: [
-        { id: 'overview', label: 'Overview', description: 'Live command summary and key actions', icon: LayoutDashboard },
-        { id: 'operations', label: 'Operations', description: 'Machine view, assignments, and monitoring', icon: Factory },
-        { id: 'tasks', label: 'Tasks', description: 'Priority queue and execution controls', icon: ClipboardList },
+        { id: 'overview', label: 'Overview', description: 'Live command summary and CNC job pipeline', icon: LayoutDashboard },
+        { id: 'operations', label: 'Operations', description: 'Machine floor, assignments, and CNC monitoring', icon: Factory },
+        { id: 'tasks', label: 'Jobs', description: 'CNC job queue, lifecycle, and execution controls', icon: ClipboardList },
         { id: 'team', label: 'Team', description: 'Operator workload and company access', icon: Users },
-        { id: 'intelligence', label: 'Intelligence', description: 'AI signals, risk, and control insights', icon: Brain },
+        { id: 'intelligence', label: 'Intelligence', description: 'AI signals, risk, and CNC process insights', icon: Brain },
     ],
     operator: [
         { id: 'overview', label: 'Overview', description: 'Focused shift summary and quick actions', icon: LayoutDashboard },
@@ -371,6 +372,7 @@ export default function DashboardPage() {
     const isCreateTaskModalOpen = useAppStore((state) => state.isCreateTaskModalOpen);
     const isAddUserModalOpen = useAppStore((state) => state.isAddUserModalOpen);
     const isGlobalAIModalOpen = useAppStore((state) => state.isGlobalAIModalOpen);
+    const isJobCreationModalOpen = useAppStore((state) => state.isJobCreationModalOpen);
     const createTaskMachineId = useAppStore((state) => state.createTaskMachineId);
     const wsStatus = useAppStore((state) => state.wsStatus);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
@@ -502,6 +504,7 @@ export default function DashboardPage() {
                 {isAddUserModalOpen && <AddUserModal />}
                 {isCreateTaskModalOpen && <CreateTaskModal key={createTaskMachineId || 'new-task'} />}
                 {isGlobalAIModalOpen && <GlobalAIAssistantModal />}
+                {isJobCreationModalOpen && <JobCreationModal />}
             </AnimatePresence>
 
             <div className="flex flex-1">

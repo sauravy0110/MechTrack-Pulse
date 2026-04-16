@@ -21,6 +21,8 @@ from app.api.v1.operators import router as operators_router
 from app.api.v1.supervisor import router as supervisor_router
 from app.api.v1.owner import router as owner_router
 from app.api.v1.client import router as client_router
+from app.api.v1.job_specs import router as job_specs_router
+from app.api.v1.job_processes import router as job_processes_router
 
 api_router = APIRouter()
 
@@ -39,4 +41,7 @@ api_router.include_router(operators_router, prefix="/operator", tags=["Operators
 api_router.include_router(supervisor_router, prefix="/supervisor", tags=["Supervisor"])
 api_router.include_router(owner_router, prefix="/owner", tags=["Owner"])
 api_router.include_router(client_router, prefix="/client", tags=["Client"])
+api_router.include_router(job_specs_router, prefix="/job-specs", tags=["CNC Job Specs"])
+api_router.include_router(job_processes_router, prefix="/job-processes", tags=["CNC Process Plan"])
 api_router.include_router(ws_router, tags=["WebSocket"])
+

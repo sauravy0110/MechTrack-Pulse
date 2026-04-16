@@ -18,6 +18,8 @@ from app.models.machine import Machine
 from app.models.operator_score import OperatorScore
 from app.models.ai_insight import AIInsight
 from app.models.report import Report
+from app.models.job_spec import JobSpec
+from app.models.job_process import JobProcess
 
 __all__ = [
     "Company",
@@ -32,4 +34,6 @@ __all__ = [
     "OperatorScore",
     "AIInsight",
     "Report",
+    "JobSpec",
+    "JobProcess",
 ]

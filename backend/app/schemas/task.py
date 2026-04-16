@@ -27,7 +27,7 @@ class UpdateTaskRequest(BaseModel):
     title: str | None = Field(None, min_length=2, max_length=255)
     description: str | None = None
     priority: str | None = Field(None, pattern="^(low|medium|high|critical)$")
-    status: str | None = Field(None, pattern="^(idle|queued|in_progress|paused|completed|delayed)$")
+    status: str | None = None  # CNC pipeline has many status values
     delay_reason: str | None = None
     assigned_to: UUID | None = None
     client_id: UUID | None = None
@@ -55,6 +55,15 @@ class TaskResponse(BaseModel):
     delay_reason: str | None = None
     created_at: datetime
     updated_at: datetime
+    # CNC-specific fields
+    is_locked: bool = False
+    rework_flag: bool = False
+    rework_iteration: int = 0
+    part_name: str | None = None
+    material_type: str | None = None
+    material_batch: str | None = None
+    drawing_url: str | None = None
+    rework_reason: str | None = None
 
     model_config = {"from_attributes": True}
 
