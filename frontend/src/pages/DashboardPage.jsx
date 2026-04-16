@@ -177,7 +177,7 @@ function FirstTimeHint() {
 function OperationsEmptyState() {
     const machines = useAppStore((state) => state.machines);
     const openAddMachineModal = useAppStore((state) => state.openAddMachineModal);
-    const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const userRole = useAuthStore((state) => state.user?.role);
     const canManageFactory = userRole === 'owner' || userRole === 'supervisor';
 
@@ -201,8 +201,8 @@ function OperationsEmptyState() {
                             Add Machine
                         </button>
                     ) : (
-                        <button type="button" onClick={() => openCreateTaskModal()} className="btn-primary rounded-full px-5 py-3 text-xs font-semibold">
-                            Create Task
+                        <button type="button" onClick={() => openJobCreationModal()} className="btn-primary rounded-full px-5 py-3 text-xs font-semibold">
+                            Create Job
                         </button>
                     )}
                 </div>

@@ -749,7 +749,10 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`Job "${data.title}" created. Now extract drawing specs.`, 'success');
-            await get().fetchDashboard();
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
             return data;
         } catch (error) {
             set({ creatingTask: false });
@@ -774,10 +777,11 @@ const useAppStore = create((set, get) => ({
         }
     },
 
-    extractJobSpecs: async (taskId, { drawing_context, part_name }) => {
+    extractJobSpecs: async (taskId, { drawing_context, drawing_image_url, part_name }) => {
         try {
             const { data } = await api.post(`/job-specs/${taskId}/extract`, {
                 drawing_context,
+                drawing_image_url,
                 part_name,
             });
             set((state) => ({
@@ -786,7 +790,10 @@ const useAppStore = create((set, get) => ({
                     [taskId]: { ...state.jobSpecs[taskId], specs: data.specs, all_confirmed: false },
                 },
             }));
-            get().addAlert(data.message || 'AI extraction complete.', data.source === 'ai_llm' ? 'success' : 'info');
+            get().addAlert(
+                data.message || 'AI extraction complete.',
+                data.source === 'ai_llm' || data.source === 'ai_vision' ? 'success' : 'info'
+            );
             return data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'AI extraction failed.'));

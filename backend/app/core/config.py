@@ -7,8 +7,12 @@ WHY: Centralized config using Pydantic Settings.
 - Single source of truth for all config values
 """
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+# Load local .env values for development; Render env vars remain available via the process environment.
+load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -74,6 +78,7 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL_FAST: str = "mistralai/mistral-small-3.1-24b-instruct:free"
     OPENROUTER_MODEL_CODER: str = "qwen/qwen3-coder:free"
     OPENROUTER_MODEL_REASONING: str = "openrouter/free"
+    OPENROUTER_MODEL_VISION: str | None = None
     OPENROUTER_TIMEOUT_SECONDS: int = 30
 
     # ── Public App URLs ───────────────────────────────────────

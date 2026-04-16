@@ -1,5 +1,5 @@
 /**
- * JobCreationModal — Multi-step CNC job creation wizard for supervisors.
+ * JobCreationModal — Multi-step CNC job creation wizard for owners and supervisors.
  *
  * Steps:
  *   1. Client Selection (existing or create new inline)
@@ -22,6 +22,13 @@ const STEPS = [
 const MATERIAL_OPTIONS = ['EN8', 'EN9', 'EN24', 'SS304', 'SS316', 'MS', 'Mild Steel', 'Cast Iron', 'Alloy Steel', 'Aluminium 6061', 'Other'];
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'];
 
+function resolveMediaUrl(path) {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    const apiBase = (import.meta.env.VITE_API_URL || '').replace(/\/api\/v1\/?$/, '');
+    return apiBase ? `${apiBase}${path}` : path;
+}
+
 export default function JobCreationModal() {
     const {
         isJobCreationModalOpen, closeJobCreationModal,
@@ -30,6 +37,7 @@ export default function JobCreationModal() {
         extractJobSpecs, updateJobSpec, confirmAllSpecs, lockJob,
         fetchJobSpecs,
         creatingTask, lockingJob,
+        aiProviderStatus, fetchAIProviderStatus,
         addAlert,
     } = useAppStore();
 
@@ -75,9 +83,10 @@ export default function JobCreationModal() {
         if (isJobCreationModalOpen) {
             fetchClients();
             fetchMachines();
+            fetchAIProviderStatus();
             resetState();
         }
-    }, [isJobCreationModalOpen]);
+    }, [isJobCreationModalOpen, fetchAIProviderStatus]);
 
     const resetState = () => {
         setStep(1); setError(''); setTaskId(null);
@@ -91,7 +100,7 @@ export default function JobCreationModal() {
         });
         setCreatedClientCreds(null);
         setPartName(''); setMaterialType(''); setMaterialBatch(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
-        setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setSpecs([]); setEditedSpecs({}); setLocking(false);
+        setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setConfirming(false); setLocking(false);
     };
 
     if (!isJobCreationModalOpen) return null;
@@ -188,11 +197,20 @@ export default function JobCreationModal() {
             setError('Upload a drawing image or paste drawing details before AI extraction.');
             return;
         }
+        if (drawingUploadedUrl && !drawingContext.trim() && aiProviderStatus?.vision_enabled !== true) {
+            setError(
+                aiProviderStatus?.enabled
+                    ? 'Image OCR needs OPENROUTER_MODEL_VISION. Paste drawing text or add a vision-capable OpenRouter model.'
+                    : 'Image OCR needs OPENROUTER_API_KEY and OPENROUTER_MODEL_VISION. Paste drawing text or configure AI first.'
+            );
+            return;
+        }
         setExtracting(true);
         setError('');
         try {
             const result = await extractJobSpecs(taskId, {
                 drawing_context: drawingContext || null,
+                drawing_image_url: resolveMediaUrl(drawingUploadedUrl),
                 part_name: partName,
             });
             if (result?.specs) setSpecs(result.specs);
@@ -242,70 +260,49 @@ export default function JobCreationModal() {
     };
 
     return (
-        <div className="modal-backdrop" style={{ zIndex: 2000 }}>
-            <div className="modal-shell" style={{
-                width: 'min(700px, 95vw)',
-                maxHeight: '92vh',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-            }}>
+        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-bg-overlay px-4 py-8">
+            <div className="modal-shell flex max-h-[92vh] w-full max-w-[700px] flex-col overflow-hidden rounded-[30px] shadow-2xl">
                 {/* ── Header ─────────────────────────────── */}
-                <div style={{
-                    padding: '20px 24px 16px',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    flexShrink: 0,
-                }}>
+                <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/70 px-6 py-5">
                     <div>
-                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            Create CNC Job
-                        </h2>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            AI-assisted job creation with drawing extraction & verification
-                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">CNC MES</p>
+                        <h2 className="font-display mt-2 text-3xl tracking-tight text-text-primary">Create CNC Job</h2>
+                        <p className="mt-2 text-xs leading-6 text-text-secondary">
+                            Locked job creation with client linking, drawing extraction, human verification, and release control.
+                        </p>
                     </div>
                     <button
+                        type="button"
                         onClick={closeJobCreationModal}
-                        style={{
-                            background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)',
-                            borderRadius: '8px', color: 'var(--text-muted)',
-                            width: '32px', height: '32px', fontSize: '18px', cursor: 'pointer',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}
-                    >×</button>
+                        className="modal-close"
+                    >
+                        Close
+                    </button>
                 </div>
 
                 {/* ── Step Indicator ──────────────────────── */}
-                <div style={{
-                    padding: '14px 24px',
-                    borderBottom: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', gap: '4px', flexShrink: 0,
-                }}>
+                <div className="flex shrink-0 gap-2 border-b border-border/70 px-6 py-4">
                     {STEPS.map((s, idx) => {
                         const isActive = s.id === step;
                         const isDone = s.id < step;
                         return (
-                            <div key={s.id} style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '4px' }}>
-                                <div style={{
-                                    display: 'flex', alignItems: 'center', gap: '6px', flex: 1,
-                                    padding: '6px 10px', borderRadius: '8px',
-                                    background: isActive ? 'rgba(99,102,241,0.15)' : isDone ? 'rgba(52,211,153,0.08)' : 'transparent',
-                                    border: `1px solid ${isActive ? 'rgba(99,102,241,0.3)' : isDone ? 'rgba(52,211,153,0.2)' : 'rgba(255,255,255,0.06)'}`,
-                                }}>
-                                    <span style={{ fontSize: '14px' }}>{isDone ? '✓' : s.icon}</span>
-                                    <span style={{
-                                        fontSize: '11px', fontWeight: 600,
-                                        color: isActive ? '#A5B4FC' : isDone ? '#34D399' : 'var(--text-muted)',
-                                    }}>
+                            <div key={s.id} className="flex flex-1 items-center gap-2">
+                                <div
+                                    className={`flex flex-1 items-center gap-2 rounded-xl border px-3 py-2 ${
+                                        isActive
+                                            ? 'border-accent/30 bg-accent/10 text-accent'
+                                            : isDone
+                                                ? 'border-success/25 bg-success/10 text-success'
+                                                : 'border-border/70 bg-bg-hover/40 text-text-muted'
+                                    }`}
+                                >
+                                    <span className="text-sm">{isDone ? '✓' : s.icon}</span>
+                                    <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">
                                         {s.label}
                                     </span>
                                 </div>
                                 {idx < STEPS.length - 1 && (
-                                    <div style={{
-                                        width: '16px', height: '1px', flexShrink: 0,
-                                        background: isDone ? '#34D399' : 'rgba(255,255,255,0.08)',
-                                    }} />
+                                    <div className={`hidden h-px flex-1 rounded-full md:block ${isDone ? 'bg-success/40' : 'bg-border/80'}`} />
                                 )}
                             </div>
                         );
@@ -313,15 +310,11 @@ export default function JobCreationModal() {
                 </div>
 
                 {/* ── Body ─────────────────────────────────── */}
-                <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
+                <div className="flex-1 overflow-y-auto px-6 py-5">
                     {/* Error banner */}
                     {error && (
-                        <div style={{
-                            padding: '10px 14px', borderRadius: '8px', marginBottom: '14px',
-                            background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
-                            color: '#F87171', fontSize: '12px',
-                        }}>
-                            ⚠️ {error}
+                        <div className="mb-4 rounded-xl border border-danger/20 bg-danger/5 px-4 py-3 text-xs text-danger">
+                            {error}
                         </div>
                     )}
 
@@ -359,6 +352,7 @@ export default function JobCreationModal() {
                             specs={specs} onExtract={handleExtract} extracting={extracting}
                             onSpecEdit={handleSpecEdit}
                             partName={partName}
+                            aiProviderStatus={aiProviderStatus}
                         />
                     )}
 
@@ -373,75 +367,54 @@ export default function JobCreationModal() {
                 </div>
 
                 {/* ── Footer Actions ──────────────────────── */}
-                <div style={{
-                    padding: '16px 24px',
-                    borderTop: '1px solid rgba(255,255,255,0.06)',
-                    display: 'flex', justifyContent: 'space-between', gap: '10px',
-                    flexShrink: 0,
-                }}>
+                <div className="flex shrink-0 justify-between gap-3 border-t border-border/70 px-6 py-4">
                     <button
+                        type="button"
                         onClick={() => step > 1 ? setStep(step - 1) : closeJobCreationModal()}
-                        style={{
-                            padding: '10px 20px', borderRadius: '8px', fontSize: '13px',
-                            background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                            color: 'var(--text-muted)', cursor: 'pointer', fontWeight: 600,
-                        }}
+                        className="btn-ghost rounded-xl px-4 py-3 text-sm font-medium"
                     >
-                        {step === 1 ? 'Cancel' : '← Back'}
+                        {step === 1 ? 'Cancel' : 'Back'}
                     </button>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div className="flex flex-wrap justify-end gap-2">
                         {step === 3 && specs.length > 0 && (
                             <button
+                                type="button"
                                 onClick={handleConfirmAll}
                                 disabled={confirming}
-                                style={{
-                                    padding: '10px 20px', borderRadius: '8px', fontSize: '13px',
-                                    background: 'rgba(52,211,153,0.15)', border: '1px solid rgba(52,211,153,0.3)',
-                                    color: '#34D399', cursor: 'pointer', fontWeight: 600,
-                                }}
+                                className="rounded-xl border border-success/25 bg-success/10 px-4 py-3 text-sm font-semibold text-success disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {confirming ? '⟳ Confirming…' : '✓ Confirm All & Continue'}
+                                {confirming ? 'Confirming...' : 'Confirm All & Continue'}
                             </button>
                         )}
                         {step < 3 && (
                             <button
+                                type="button"
                                 onClick={() => goToStep(step + 1)}
                                 disabled={creatingTask}
-                                style={{
-                                    padding: '10px 24px', borderRadius: '8px', fontSize: '13px',
-                                    background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                                    border: 'none', color: 'white', cursor: 'pointer', fontWeight: 700,
-                                }}
+                                className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {creatingTask ? '⟳ Creating…' : 'Continue →'}
+                                {creatingTask ? 'Creating...' : 'Continue'}
                             </button>
                         )}
                         {step === 3 && specs.length === 0 && (
                             <button
+                                type="button"
                                 onClick={handleExtract}
                                 disabled={extracting}
-                                style={{
-                                    padding: '10px 24px', borderRadius: '8px', fontSize: '13px',
-                                    background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                                    border: 'none', color: 'white', cursor: 'pointer', fontWeight: 700,
-                                }}
+                                className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {extracting ? '⟳ Extracting…' : '✨ Extract with AI'}
+                                {extracting ? 'Extracting...' : 'Extract Specs'}
                             </button>
                         )}
                         {step === 4 && (
                             <button
+                                type="button"
                                 onClick={handleLock}
                                 disabled={locking || lockingJob}
-                                style={{
-                                    padding: '10px 24px', borderRadius: '8px', fontSize: '13px',
-                                    background: 'linear-gradient(135deg, #10B981, #059669)',
-                                    border: 'none', color: 'white', cursor: 'pointer', fontWeight: 700,
-                                    display: 'flex', alignItems: 'center', gap: '8px',
-                                }}
+                                className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {(locking || lockingJob) ? '⟳ Locking…' : '🔒 Verify & Lock Job'}
+                                {(locking || lockingJob) ? 'Locking...' : 'Verify & Lock Job'}
                             </button>
                         )}
                     </div>
@@ -638,6 +611,7 @@ function StepAISpecs({
     extracting,
     onSpecEdit,
     partName,
+    aiProviderStatus,
 }) {
     const confidenceColor = (c) => {
         if (!c) return '#8B8FA8';
@@ -645,17 +619,34 @@ function StepAISpecs({
         if (c >= 0.70) return '#FBBF24';
         return '#F87171';
     };
+    const aiReady = aiProviderStatus?.enabled === true;
+    const visionReady = aiProviderStatus?.vision_enabled === true;
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{
-                padding: '14px',
-                borderRadius: '10px',
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,255,255,0.08)',
-            }}>
-                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
-                    DRAWING UPLOAD *
+            <div className={`rounded-2xl border px-4 py-4 ${visionReady ? 'border-success/20 bg-success/6' : aiReady ? 'border-warning/20 bg-warning/6' : 'border-danger/20 bg-danger/6'}`}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <div className={`text-xs font-bold uppercase tracking-[0.18em] ${visionReady ? 'text-success' : aiReady ? 'text-warning' : 'text-danger'}`}>
+                            {visionReady ? 'Vision Extraction Ready' : aiReady ? 'Text AI Ready' : 'Manual Assist Mode'}
+                        </div>
+                        <p className="mt-2 text-xs leading-6 text-text-secondary">
+                            {visionReady
+                                ? 'Uploaded drawings will be sent to the configured OpenRouter vision model, with text parsing as backup.'
+                                : aiReady
+                                    ? 'OpenRouter is connected, but image OCR needs OPENROUTER_MODEL_VISION. Pasted drawing text will still extract accurately.'
+                                    : 'No OpenRouter key is configured. Uploads are stored, but accurate extraction will rely on pasted drawing text and manual verification.'}
+                        </p>
+                    </div>
+                    <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${visionReady ? 'border-success/25 bg-success/10 text-success' : aiReady ? 'border-warning/25 bg-warning/10 text-warning' : 'border-danger/25 bg-danger/10 text-danger'}`}>
+                        {visionReady ? 'Image + Text' : aiReady ? 'Text + AI' : 'Manual + Parser'}
+                    </div>
+                </div>
+            </div>
+
+            <div className="glass-card rounded-2xl border border-border/70 p-4">
+                <div className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">
+                    Drawing Upload
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
                     <input
@@ -672,30 +663,22 @@ function StepAISpecs({
                         type="button"
                         onClick={() => drawingFile && onDrawingUpload(drawingFile)}
                         disabled={!drawingFile || drawingUploading}
-                        style={{
-                            padding: '10px 16px',
-                            borderRadius: '8px',
-                            fontSize: '12px',
-                            fontWeight: 700,
-                            border: '1px solid rgba(99,102,241,0.3)',
-                            background: 'rgba(99,102,241,0.15)',
-                            color: '#A5B4FC',
-                            cursor: !drawingFile || drawingUploading ? 'not-allowed' : 'pointer',
-                            opacity: !drawingFile || drawingUploading ? 0.6 : 1,
-                        }}
+                        className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        {drawingUploading ? '⟳ Uploading…' : 'Upload Drawing'}
+                        {drawingUploading ? 'Uploading...' : 'Upload Drawing'}
                     </button>
                 </div>
-                <div style={{ fontSize: '10px', color: drawingUploadedUrl ? '#34D399' : 'var(--text-muted)', marginTop: '8px' }}>
-                    {drawingUploadedUrl ? 'Drawing linked to this job.' : 'Upload a drawing image, or provide detailed OCR/spec text below.'}
+                <div className={`mt-3 text-[11px] ${drawingUploadedUrl ? 'text-success' : 'text-text-muted'}`}>
+                    {drawingUploadedUrl
+                        ? 'Drawing linked to this job and ready for extraction.'
+                        : 'Upload a drawing image, or provide detailed drawing text below.'}
                 </div>
             </div>
 
             {/* Drawing context input */}
-            <div>
+            <div className="glass-card rounded-2xl border border-border/70 p-4">
                 <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>
-                    DRAWING DESCRIPTION / OCR TEXT <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(Optional but recommended)</span>
+                    DRAWING TEXT / OCR <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(Optional but strongly recommended)</span>
                 </label>
                 <textarea
                     value={drawingContext}
@@ -704,8 +687,8 @@ function StepAISpecs({
                     className="input-glass"
                     style={{ width: '100%', minHeight: '100px', resize: 'vertical', fontFamily: 'monospace', fontSize: '12px', lineHeight: 1.6, boxSizing: 'border-box' }}
                 />
-                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
-                    Leave blank to use AI heuristics for "{partName}" — you can edit all values in the table.
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    If OCR is unavailable, this text parser is the most accurate extraction path for "{partName}". You can still edit every field before locking.
                 </div>
             </div>
 
@@ -714,11 +697,11 @@ function StepAISpecs({
                 <div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                         <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            🧠 AI Extracted Specifications
+                            Extracted Specifications
                         </div>
                         <span style={{
                             fontSize: '10px', padding: '2px 8px', borderRadius: '10px',
-                            background: 'rgba(99,102,241,0.15)', color: '#A5B4FC', border: '1px solid rgba(99,102,241,0.2)',
+                            background: 'rgba(217,176,76,0.12)', color: 'var(--gold)', border: '1px solid rgba(217,176,76,0.2)',
                         }}>
                             {specs.filter((s) => s.is_confirmed).length}/{specs.length} confirmed
                         </span>
@@ -772,22 +755,17 @@ function StepAISpecs({
                     </div>
 
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                        ✏️ Edit any value in "Your Value" column. Click "Confirm All & Continue" when ready.
+                        Edit any value in "Your Value" before you confirm and lock the job.
                     </div>
                 </div>
             ) : (
-                <div style={{
-                    textAlign: 'center', padding: '32px',
-                    background: 'rgba(99,102,241,0.05)',
-                    border: '1px dashed rgba(99,102,241,0.2)',
-                    borderRadius: '12px',
-                }}>
+                <div className="rounded-2xl border border-dashed border-accent/20 bg-accent/5 px-6 py-10 text-center">
                     <div style={{ fontSize: '32px', marginBottom: '10px' }}>🧠</div>
                     <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
                         Ready to Extract Specs
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '300px', margin: '0 auto' }}>
-                        Click "Extract with AI" below to analyze the drawing and populate the specification table.
+                        Upload the drawing, paste any readable text you have, and extract the spec table before human verification.
                     </div>
                 </div>
             )}

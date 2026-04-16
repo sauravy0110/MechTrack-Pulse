@@ -144,6 +144,28 @@ def test_supervisor_style_client_creation_and_lock_gate(client, platform_admin_t
     assert assignment.json()["task"]["status"] == "assigned"
 
 
+def test_drawing_text_extraction_preserves_real_dimensions(client, platform_admin_token):
+    owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
+    task_id, _ = prepare_locked_job(client, owner_token, operator_id, machine_id)
+
+    specs_response = client.get(
+        f"/api/v1/job-specs/{task_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert specs_response.status_code == 200
+
+    specs_map = {
+        item["field_name"]: item["human_value"] or item["ai_value"]
+        for item in specs_response.json()["specs"]
+    }
+
+    assert specs_map["Overall_Length"] == "250"
+    assert specs_map["Diameter_1_OD"] == "40"
+    assert specs_map["Thread_Spec"] == "M20"
+    assert specs_map["Keyway_Width"] == "8"
+    assert specs_map["Runout_Tolerance"] == "0.02"
+
+
 def test_full_mes_flow_reaches_dispatch_and_completion(client, platform_admin_token, monkeypatch):
     owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
     task_id, _ = prepare_locked_job(client, owner_token, operator_id, machine_id)

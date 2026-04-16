@@ -15,7 +15,6 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const tasks = useAppStore((state) => state.tasks);
     const machines = useAppStore((state) => state.machines);
     const updateTaskStatus = useAppStore((state) => state.updateTaskStatus);
-    const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
     const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const addAlert = useAppStore((state) => state.addAlert);
     const taskFilter = useAppStore((state) => state.taskFilter);
@@ -53,11 +52,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     };
 
     const openTaskCreation = () => {
-        if (userRole === 'supervisor') {
-            openJobCreationModal();
-            return;
-        }
-        openCreateTaskModal();
+        openJobCreationModal();
     };
 
     const wrapperClass = embedded
@@ -73,7 +68,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                 </div>
                 {canCreateTask && (
                     <button type="button" onClick={openTaskCreation}
-                        className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
+                        className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ Create Job</button>
                 )}
             </header>
 
@@ -199,7 +194,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                         </p>
                         {canCreateTask && (
                             <button type="button" onClick={openTaskCreation}
-                                className="mt-5 btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
+                                className="mt-5 btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ Create Job</button>
                         )}
                     </MotionDiv>
                 )}

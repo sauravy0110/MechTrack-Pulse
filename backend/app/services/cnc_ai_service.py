@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 from typing import Any
 from uuid import UUID
 
@@ -28,7 +29,12 @@ from app.models.user import User
 from app.models.machine import Machine
 from app.models.job_spec import JobSpec
 from app.models.job_process import JobProcess
-from app.services.openrouter_service import _chat_json, openrouter_enabled
+from app.services.openrouter_service import (
+    _chat_json,
+    _chat_json_with_image,
+    openrouter_enabled,
+    openrouter_vision_enabled,
+)
 from app.core.config import get_settings
 
 logger = logging.getLogger("app.cnc_ai")
@@ -70,6 +76,7 @@ def extract_drawing_specs(
     task_id: UUID,
     part_name: str | None = None,
     drawing_context: str | None = None,
+    drawing_image_url: str | None = None,
 ) -> dict[str, Any]:
     """
     AI-powered drawing specification extraction.
@@ -89,7 +96,47 @@ def extract_drawing_specs(
         JobSpec.company_id == company_id,
     ).delete()
 
-    extracted_specs = []
+    extracted_specs: list[dict[str, Any]] = []
+    extraction_notes: list[str] = []
+
+    # ── Attempt vision-based extraction from uploaded drawing ─────────
+    if openrouter_vision_enabled() and drawing_image_url:
+        llm_result = _chat_json_with_image(
+            model=settings.OPENROUTER_MODEL_VISION or settings.OPENROUTER_MODEL_GENERAL,
+            system_prompt=(
+                "You are a CNC manufacturing engineer analyzing a shaft drawing image. "
+                "Extract all clearly readable measurable parameters from the drawing. "
+                "Return valid JSON with key 'specs' containing an array of objects. "
+                "Each object must contain: field_name, ai_value, unit, ai_confidence. "
+                "Use these canonical field names when possible: Overall_Length, Diameter_1_OD, "
+                "Diameter_2_OD, Diameter_3_OD, Thread_Spec, Keyway_Width, Keyway_Depth, "
+                "Groove_Width, Surface_Roughness, Runout_Tolerance, Concentricity_Tolerance. "
+                "Only return values that are actually visible or strongly supported by the image/text."
+            ),
+            user_payload={
+                "part_name": part_name or task.title,
+                "drawing_description": drawing_context,
+                "material": task.material_type,
+            },
+            image_url=drawing_image_url,
+            temperature=0.05,
+            max_tokens=1400,
+        )
+        extracted_specs = _normalize_extracted_specs(llm_result.get("specs") if llm_result else None)
+        if extracted_specs:
+            _persist_specs(db, company_id, task_id, extracted_specs)
+            return {
+                "status": "success",
+                "source": "ai_vision",
+                "confidence": "high",
+                "message": f"AI extracted {len(extracted_specs)} specifications from the uploaded drawing.",
+                "specs": extracted_specs,
+            }
+        extraction_notes.append("Uploaded drawing could not be parsed by the configured vision model.")
+    elif drawing_image_url:
+        extraction_notes.append(
+            "Uploaded drawing OCR needs OPENROUTER_API_KEY and OPENROUTER_MODEL_VISION to be configured."
+        )
 
     # ── Attempt real AI extraction ──────────────────────────
     if openrouter_enabled() and drawing_context:
@@ -139,28 +186,33 @@ def extract_drawing_specs(
                     "status": "success",
                     "source": "ai_llm",
                     "confidence": "high",
-                    "message": f"AI extracted {len(extracted_specs)} specifications from drawing description.",
+                "message": f"AI extracted {len(extracted_specs)} specifications from drawing description.",
                     "specs": extracted_specs,
                 }
+
+    # ── Deterministic text parsing from OCR / pasted text ───
+    extracted_specs = _extract_specs_from_text(drawing_context)
+    if extracted_specs:
+        _persist_specs(db, company_id, task_id, extracted_specs)
+        message = f"Extracted {len(extracted_specs)} specifications from the provided drawing text."
+        if extraction_notes:
+            message = f"{message} {' '.join(extraction_notes)}"
+        return {
+            "status": "success",
+            "source": "text_parser",
+            "confidence": "medium",
+            "message": message,
+            "specs": extracted_specs,
+        }
 
     # ── Fallback: Generate plausible CNC shaft defaults ─────
     # Realistic values for a typical industrial shaft
     base_values = _generate_shaft_defaults(part_name or task.title)
     for field_data in base_values:
-        spec = JobSpec(
-            company_id=company_id,
-            task_id=task_id,
-            field_name=field_data["field_name"],
-            ai_value=field_data["ai_value"],
-            ai_confidence=field_data["ai_confidence"],
-            unit=field_data["unit"],
-            human_value=None,
-            is_confirmed=False,
-        )
-        db.add(spec)
         extracted_specs.append(field_data)
 
-    db.commit()
+    _persist_specs(db, company_id, task_id, extracted_specs)
+    note_text = f" {' '.join(extraction_notes)}" if extraction_notes else ""
     return {
         "status": "success",
         "source": "ai_heuristic",
@@ -168,9 +220,173 @@ def extract_drawing_specs(
         "message": (
             "AI generated standard CNC shaft parameters. "
             "Please verify each value against the actual drawing before locking."
-        ),
+            f"{note_text}"
+        ).strip(),
         "specs": extracted_specs,
     }
+
+
+def _persist_specs(
+    db: Session,
+    company_id: UUID,
+    task_id: UUID,
+    specs: list[dict[str, Any]],
+) -> None:
+    for field_data in specs:
+        spec = JobSpec(
+            company_id=company_id,
+            task_id=task_id,
+            field_name=str(field_data["field_name"])[:100],
+            ai_value=str(field_data.get("ai_value", ""))[:200],
+            ai_confidence=float(field_data.get("ai_confidence", 0.75)),
+            unit=str(field_data.get("unit", "mm"))[:20],
+            human_value=None,
+            is_confirmed=False,
+        )
+        db.add(spec)
+    db.commit()
+
+
+def _normalize_extracted_specs(raw_specs: Any) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    if not isinstance(raw_specs, list):
+        return normalized
+
+    for spec_data in raw_specs:
+        if not isinstance(spec_data, dict) or not spec_data.get("field_name"):
+            continue
+        field_name = str(spec_data.get("field_name", "")).strip()[:100]
+        ai_value = str(spec_data.get("ai_value", "")).strip()[:200]
+        if not field_name or not ai_value:
+            continue
+        normalized.append({
+            "field_name": field_name,
+            "ai_value": ai_value,
+            "ai_confidence": float(spec_data.get("ai_confidence", 0.75)),
+            "unit": str(spec_data.get("unit", "mm")).strip()[:20] or "mm",
+        })
+    return normalized
+
+
+def _extract_specs_from_text(drawing_context: str | None) -> list[dict[str, Any]]:
+    if not drawing_context or not drawing_context.strip():
+        return []
+
+    text = " ".join(drawing_context.replace("\n", " ").split())
+    lower_text = text.lower()
+    specs: dict[str, dict[str, Any]] = {}
+
+    def add_spec(field_name: str, value: str | None, unit: str = "mm", confidence: float = 0.84) -> None:
+        cleaned_value = (value or "").strip()
+        if not cleaned_value or field_name in specs:
+            return
+        specs[field_name] = {
+            "field_name": field_name,
+            "ai_value": cleaned_value,
+            "ai_confidence": confidence,
+            "unit": unit,
+        }
+
+    def match_numeric(patterns: list[str], default_unit: str = "mm") -> tuple[str, str] | None:
+        for pattern in patterns:
+            match = re.search(pattern, lower_text, flags=re.IGNORECASE)
+            if not match:
+                continue
+            value = match.group(1).strip()
+            unit = (match.group(2).strip() if match.lastindex and match.lastindex >= 2 and match.group(2) else default_unit)
+            return value, unit
+        return None
+
+    length_match = match_numeric([
+        r"(?:overall\s*length|o\/?a\s*length|length)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if length_match:
+        add_spec("Overall_Length", length_match[0], length_match[1] or "mm")
+
+    labeled_diameter_patterns = {
+        "Diameter_1_OD": [
+            r"(?:diameter|dia|od)\s*1(?:\s*od)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+            r"\bd1\b\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+        ],
+        "Diameter_2_OD": [
+            r"(?:diameter|dia|od)\s*2(?:\s*od)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+            r"\bd2\b\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+        ],
+        "Diameter_3_OD": [
+            r"(?:diameter|dia|od)\s*3(?:\s*od)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+            r"\bd3\b\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+        ],
+    }
+    for field_name, patterns in labeled_diameter_patterns.items():
+        match = match_numeric(patterns)
+        if match:
+            add_spec(field_name, match[0], match[1] or "mm")
+
+    if not any(field_name in specs for field_name in ("Diameter_1_OD", "Diameter_2_OD", "Diameter_3_OD")):
+        diameter_values = [
+            (match.group(1).strip(), (match.group(2) or "mm").strip() or "mm")
+            for match in re.finditer(
+                r"(?:diameter|dia|od)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+                lower_text,
+                flags=re.IGNORECASE,
+            )
+        ]
+        for field_name in ("Diameter_1_OD", "Diameter_2_OD", "Diameter_3_OD"):
+            if not diameter_values:
+                break
+            value, unit = diameter_values.pop(0)
+            add_spec(field_name, value, unit)
+
+    thread_match = re.search(
+        r"(?:thread(?:\s*spec)?|thread)\s*[:=]?\s*([a-z]+\s*-?\s*\d+(?:x\d+(?:\.\d+)?)?)",
+        lower_text,
+        flags=re.IGNORECASE,
+    )
+    if thread_match:
+        add_spec("Thread_Spec", thread_match.group(1).replace(" ", "").upper(), "", 0.86)
+
+    keyway_width_match = match_numeric([
+        r"keyway(?:\s*width)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if keyway_width_match:
+        add_spec("Keyway_Width", keyway_width_match[0], keyway_width_match[1] or "mm")
+
+    keyway_depth_match = match_numeric([
+        r"keyway\s*depth\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if keyway_depth_match:
+        add_spec("Keyway_Depth", keyway_depth_match[0], keyway_depth_match[1] or "mm")
+
+    groove_width_match = match_numeric([
+        r"groove(?:\s*width)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if groove_width_match:
+        add_spec("Groove_Width", groove_width_match[0], groove_width_match[1] or "mm")
+
+    surface_match = match_numeric([
+        r"surface\s*roughness\s*(?:ra)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ra)?",
+        r"\bra\b\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ra)?",
+    ], default_unit="Ra")
+    if surface_match:
+        add_spec("Surface_Roughness", surface_match[0], surface_match[1] or "Ra", 0.82)
+
+    runout_match = match_numeric([
+        r"runout(?:\s*tolerance)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if runout_match:
+        add_spec("Runout_Tolerance", runout_match[0], runout_match[1] or "mm", 0.86)
+
+    concentricity_match = match_numeric([
+        r"concentricity(?:\s*tolerance)?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(mm|cm|inch|in)?",
+    ])
+    if concentricity_match:
+        add_spec("Concentricity_Tolerance", concentricity_match[0], concentricity_match[1] or "mm", 0.86)
+
+    return [
+        specs[field["field_name"]]
+        for field in STANDARD_SHAFT_FIELDS
+        if field["field_name"] in specs
+    ]
 
 
 def _generate_shaft_defaults(part_name: str) -> list[dict]:

@@ -46,7 +46,6 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const setSelectedMachine = useAppStore((s) => s.setSelectedMachine);
     const assignTask = useAppStore((s) => s.assignTask);
     const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
-    const openCreateTaskModal = useAppStore((s) => s.openCreateTaskModal);
     const openJobCreationModal = useAppStore((s) => s.openJobCreationModal);
     const userRole = useAuthStore((s) => s.user?.role);
 
@@ -109,11 +108,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     };
 
     const openTaskCreation = () => {
-        if (userRole === 'supervisor') {
-            openJobCreationModal();
-            return;
-        }
-        openCreateTaskModal(selectedMachine?.id || '');
+        openJobCreationModal();
     };
 
     if (!selectedMachine && userRole === 'owner') {
@@ -136,7 +131,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                         {canCreateTask && (
                             <button type="button" onClick={openTaskCreation}
                                 className="btn-primary rounded-full px-3 py-1 text-[11px] font-semibold inline-flex items-center gap-1">
-                                <Plus size={10} /> {userRole === 'supervisor' ? 'Job' : 'Task'}
+                                <Plus size={10} /> Job
                             </button>
                         )}
                         <button onClick={clearSelection} className="text-text-muted hover:text-text-primary transition-colors cursor-pointer p-1 rounded-full hover:bg-bg-hover">
@@ -203,7 +198,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                     <p className="text-xs text-text-muted">No tasks assigned yet.</p>
                                     {canCreateTask && (
                                         <button type="button" onClick={openTaskCreation}
-                                            className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
+                                            className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ Create Job</button>
                                     )}
                                 </div>
                             )}
@@ -304,9 +299,9 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                 <div className="flex items-center justify-between gap-3">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Overview</h2>
                     {canCreateTask && (
-                        <button type="button" onClick={() => userRole === 'supervisor' ? openJobCreationModal() : openCreateTaskModal()}
+                        <button type="button" onClick={openJobCreationModal}
                             className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-                            <Plus size={10} /> {userRole === 'supervisor' ? 'Job' : 'Task'}
+                            <Plus size={10} /> Job
                         </button>
                     )}
                 </div>
@@ -365,8 +360,8 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                             <div className="rounded-xl border border-dashed border-border glass-card px-4 py-6 text-center">
                                 <p className="text-xs text-text-muted">No tasks match the current filter.</p>
                                 {canCreateTask && (
-                                    <button type="button" onClick={() => userRole === 'supervisor' ? openJobCreationModal() : openCreateTaskModal()}
-                                        className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
+                                    <button type="button" onClick={openJobCreationModal}
+                                        className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ Create Job</button>
                                 )}
                             </div>
                         )}

@@ -31,6 +31,10 @@ def openrouter_enabled() -> bool:
     return bool(_clean(settings.OPENROUTER_API_KEY))
 
 
+def openrouter_vision_enabled() -> bool:
+    return openrouter_enabled() and bool(_clean(settings.OPENROUTER_MODEL_VISION))
+
+
 def _headers() -> dict[str, str]:
     api_key = _clean(settings.OPENROUTER_API_KEY)
     if not api_key:
@@ -88,7 +92,7 @@ def _extract_json(content: str) -> dict[str, Any] | None:
 def _send_chat_completion(
     *,
     model: str,
-    messages: list[dict[str, str]],
+    messages: list[dict[str, Any]],
     temperature: float = 0.2,
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
@@ -166,6 +170,44 @@ def _chat_json(
     return parsed
 
 
+def _chat_json_with_image(
+    *,
+    model: str,
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    image_url: str,
+    temperature: float = 0.2,
+    max_tokens: int = 700,
+) -> dict[str, Any] | None:
+    if not image_url:
+        return None
+
+    response = _send_chat_completion(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": json.dumps(user_payload, ensure_ascii=True)},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            },
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+    if not response:
+        return None
+
+    choice = (response.get("choices") or [{}])[0]
+    content = _extract_text_content(choice.get("message", {}).get("content", ""))
+    parsed = _extract_json(content)
+    if not parsed:
+        logger.warning("OpenRouter returned non-JSON content for image model %s", model)
+    return parsed
+
+
 def _chat_text(
     *,
     model: str,
@@ -195,12 +237,14 @@ def get_openrouter_status() -> dict[str, Any]:
     status = {
         "enabled": bool(api_key),
         "configured": bool(api_key),
+        "vision_enabled": openrouter_vision_enabled(),
         "base_url": settings.OPENROUTER_BASE_URL,
         "models": {
             "general": settings.OPENROUTER_MODEL_GENERAL,
             "fast": settings.OPENROUTER_MODEL_FAST,
             "coder": settings.OPENROUTER_MODEL_CODER,
             "reasoning": settings.OPENROUTER_MODEL_REASONING,
+            "vision": settings.OPENROUTER_MODEL_VISION,
         },
     }
     if not api_key:
@@ -222,9 +266,11 @@ def get_openrouter_status() -> dict[str, Any]:
             }
     except httpx.HTTPStatusError as exc:
         status["enabled"] = False
+        status["vision_enabled"] = False
         status["error"] = f"OpenRouter rejected the API key ({exc.response.status_code})"
     except Exception as exc:  # noqa: BLE001
         status["enabled"] = False
+        status["vision_enabled"] = False
         status["error"] = str(exc)
 
     return status

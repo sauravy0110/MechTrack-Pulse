@@ -88,7 +88,7 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
     const updateCompanyProfile = useAppStore((state) => state.updateCompanyProfile);
     const generateReport = useAppStore((state) => state.generateReport);
     const downloadOwnerExport = useAppStore((state) => state.downloadOwnerExport);
-    const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const user = useAuthStore((state) => state.user);
 
     const [profileForm, setProfileForm] = useState(EMPTY_PROFILE);
@@ -277,10 +277,10 @@ const OwnerBusinessPanel = memo(function OwnerBusinessPanel({ embedded = false }
                     </div>
                     <button
                         type="button"
-                        onClick={() => openCreateTaskModal()}
+                        onClick={() => openJobCreationModal()}
                         className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-semibold"
                     >
-                        + Task
+                        + Job
                     </button>
                 </div>
             </div>

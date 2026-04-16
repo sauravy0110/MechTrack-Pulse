@@ -33,6 +33,11 @@ class ExtractSpecsRequest(BaseModel):
         max_length=3000,
         description="Text description/OCR output of drawing content for AI extraction",
     )
+    drawing_image_url: str | None = Field(
+        None,
+        max_length=2000,
+        description="Absolute image URL for uploaded drawing when vision OCR is available",
+    )
     part_name: str | None = Field(None, max_length=200)
 
 
@@ -103,6 +108,7 @@ def extract_specs_route(
         task_id=task_id,
         part_name=request.part_name,
         drawing_context=request.drawing_context,
+        drawing_image_url=request.drawing_image_url,
     )
 
     # Refresh to get newly created specs

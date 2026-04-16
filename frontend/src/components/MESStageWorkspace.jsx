@@ -42,7 +42,7 @@ function SectionShell({ title, children }) {
 
 function StatPill({ label, value, tone = 'text-text-primary' }) {
     return (
-        <div className="rounded-xl bg-black/10 px-3 py-3">
+        <div className="rounded-xl border border-border/60 bg-bg-hover/70 px-3 py-3">
             <p className="text-[10px] uppercase tracking-[0.16em] text-text-muted">{label}</p>
             <p className={`mt-1 text-sm font-semibold ${tone}`}>{value}</p>
         </div>
@@ -121,6 +121,9 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
     return (
         <div className="space-y-3">
             <SectionShell title="MES Workflow">
+                <div className="rounded-xl border border-accent/15 bg-accent/5 px-3 py-3 text-xs leading-6 text-text-secondary">
+                    Human-verified execution stays in control at every stage. AI can suggest, flag, and monitor, but release decisions remain with your team.
+                </div>
                 <div className="grid grid-cols-2 gap-2">
                     <StatPill label="Status" value={task.status.replace(/_/g, ' ')} />
                     <StatPill label="Rework" value={task.rework_flag ? `Iteration ${task.rework_iteration || 1}` : 'No'} tone={task.rework_flag ? 'text-warning' : 'text-success'} />
@@ -195,7 +198,7 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
                         {busyKey === 'setup' ? 'Checking...' : 'Run AI Setup Check'}
                     </button>
                     {mesSummary?.setup_check && (
-                        <div className="rounded-xl bg-black/10 px-3 py-3 text-xs text-text-secondary">
+                        <div className="rounded-xl border border-border/60 bg-bg-hover/70 px-3 py-3 text-xs text-text-secondary">
                             Latest AI setup result: <span className="font-semibold text-text-primary">{mesSummary.setup_check.status}</span>
                         </div>
                     )}
@@ -310,7 +313,7 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
                             <button
                                 type="button"
                                 onClick={() => runAction('rework', () => api.post(`/tasks/${task.id}/supervisor-final-decision`, { decision: 'rework', remarks: finalRemarks || null }))}
-                                className="rounded-xl border border-warning/25 bg-warning/8 px-4 py-3 text-xs font-semibold text-warning"
+                                className="rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs font-semibold text-warning"
                                 disabled={busyKey === 'rework'}
                             >
                                 {busyKey === 'rework' ? 'Sending...' : 'Send to Rework'}

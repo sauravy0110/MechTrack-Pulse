@@ -65,7 +65,6 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
     const operators = useAppStore((state) => state.operators);
     const insights = useAppStore((state) => state.insights);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
-    const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
     const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const openAddMachineModal = useAppStore((state) => state.openAddMachineModal);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
@@ -154,7 +153,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
             return [
                 { label: 'Open Operations', description: 'Jump into the live floor and machine control room.', icon: Factory, onClick: () => onSectionSelect('operations'), tone: 'btn-primary text-white' },
                 { label: 'Launch AI Assistant', description: 'Ask about delays, output, or operator efficiency.', icon: Brain, onClick: openGlobalAIModal },
-                { label: 'Create Task', description: 'Dispatch work with priority, deadline, and AI guidance.', icon: ClipboardList, onClick: () => openCreateTaskModal() },
+                { label: 'Create Job', description: 'Run the locked CNC job flow with client, drawing, AI verification, and lock.', icon: ClipboardList, onClick: () => openJobCreationModal() },
                 { label: 'Grow Team', description: 'Add users and manage coverage without leaving the dashboard.', icon: Users, onClick: openAddUserModal },
             ];
         }
@@ -180,7 +179,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
             { label: 'Ask AI', description: 'Get a readable progress summary or explanation instantly.', icon: Brain, onClick: openGlobalAIModal },
             { label: 'View Profile', description: 'Check account and company access in a calmer workspace.', icon: ShieldCheck, onClick: () => onSectionSelect('profile') },
         ];
-    }, [onSectionSelect, openAddUserModal, openCreateTaskModal, openGlobalAIModal, openJobCreationModal, user?.role]);
+    }, [onSectionSelect, openAddUserModal, openGlobalAIModal, openJobCreationModal, user?.role]);
 
     return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.95fr)]">
