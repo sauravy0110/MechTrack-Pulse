@@ -4,6 +4,9 @@ import useAuthStore from '../stores/authStore';
 import { Plus, X, Zap } from 'lucide-react';
 import OwnerBusinessPanel from './OwnerBusinessPanel';
 import TaskWorkspacePanel from './TaskWorkspacePanel';
+import JobLifecycleTracker from './JobLifecycleTracker';
+import ProcessPlanPanel from './ProcessPlanPanel';
+import ReworkAlertBanner from './ReworkAlertBanner';
 
 const PRIORITY_COLORS = { critical: 'text-danger', high: 'text-warning', medium: 'text-accent', low: 'text-text-muted' };
 const FILTER_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'delayed', label: 'Delayed' }];
@@ -197,9 +200,29 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
 
                     {selectedTask && (
                         <div className="glass-card rounded-xl p-3 border-accent/20 glow-accent">
-                            <p className="text-xs font-bold text-accent uppercase mb-2">Task Detail</p>
+                            <p className="text-xs font-bold text-accent uppercase mb-2">Job Detail</p>
+
+                            {selectedTask.rework_flag && (
+                                <div className="mb-3">
+                                    <ReworkAlertBanner task={selectedTask} />
+                                </div>
+                            )}
+
+                            {selectedTask.is_locked && (
+                                <div className="mb-3">
+                                    <JobLifecycleTracker task={selectedTask} compact={true} />
+                                </div>
+                            )}
+
                             <p className="text-sm font-medium text-text-primary">{selectedTask.title}</p>
+                            {selectedTask.part_name && <p className="text-[10px] text-text-muted mt-0.5">Part: {selectedTask.part_name} {selectedTask.material_type ? `• ${selectedTask.material_type}` : ''}</p>}
                             {selectedTask.description && <p className="text-xs text-text-secondary mt-1">{selectedTask.description}</p>}
+
+                            {selectedTask.is_locked && (
+                                <div className="mt-3 border-t border-border/60 pt-3">
+                                    <ProcessPlanPanel task={selectedTask} />
+                                </div>
+                            )}
                             <div className="mt-3 space-y-1.5 text-xs text-text-secondary">
                                 <div className="flex justify-between"><span>Status</span><span className={`capitalize status-${selectedTask.status.replace('_', '-')}`}>{formatStatus(selectedTask.status)}</span></div>
                                 <div className="flex justify-between"><span>Priority</span><span className={PRIORITY_COLORS[selectedTask.priority]}>{selectedTask.priority}</span></div>
