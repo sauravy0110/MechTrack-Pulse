@@ -42,7 +42,7 @@ export default function GlobalAIAssistantModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-bg-overlay px-4 py-8" onClick={closeModal}>
+        <div className="modal-overlay" onClick={closeModal}>
             <motion.div
                 initial={{ opacity: 0, y: 14, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}

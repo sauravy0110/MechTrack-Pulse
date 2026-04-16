@@ -961,6 +961,72 @@ const useAppStore = create((set, get) => ({
             throw new Error(getApiErrorMessage(error, 'Unable to trigger rework.'));
         }
     },
+
+    // ── Delete Task ─────────────────────────────────────
+    deleteTask: async (taskId) => {
+        try {
+            await api.delete(`/tasks/${taskId}`);
+            set((state) => ({
+                tasks: state.tasks.filter((t) => t.id !== taskId),
+                selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask,
+            }));
+            get().addAlert('Task deleted successfully.', 'success');
+            await get().fetchDashboard();
+        } catch (error) {
+            get().addAlert(getApiErrorMessage(error, 'Unable to delete task.'), 'error');
+            throw error;
+        }
+    },
+
+    // ── Remove task from store (WebSocket handler) ──────
+    removeTaskById: (taskId) => {
+        set((state) => ({
+            tasks: state.tasks.filter((t) => t.id !== taskId),
+            selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask,
+        }));
+    },
+
+    // ── Reactivate User ─────────────────────────────────
+    reactivateUser: async (userId) => {
+        try {
+            const { data } = await api.post(`/users/${userId}/reactivate`);
+            const reactivatedUser = normalizeUser(data);
+            set((state) => ({
+                users: state.users.some((u) => u.id === reactivatedUser.id)
+                    ? state.users.map((u) => u.id === reactivatedUser.id ? reactivatedUser : u)
+                    : [...state.users, reactivatedUser],
+                operators: data.role === 'operator'
+                    ? (state.operators.some((op) => op.id === data.id)
+                        ? state.operators.map((op) => op.id === data.id ? normalizeOperator({ ...op, ...data }) : op)
+                        : [...state.operators, normalizeOperator(data)])
+                    : state.operators,
+            }));
+            get().addAlert(`User "${data.full_name}" reactivated successfully.`, 'success');
+            await get().fetchDashboard();
+        } catch (error) {
+            get().addAlert(getApiErrorMessage(error, 'Unable to reactivate user.'), 'error');
+            throw error;
+        }
+    },
+
+    // ── Remove User Permanently ─────────────────────────
+    removeUser: async (userId) => {
+        try {
+            await api.delete(`/users/${userId}/permanent`);
+            set((state) => ({
+                users: state.users.filter((u) => u.id !== userId),
+                operators: state.operators.filter((op) => op.id !== userId),
+            }));
+            get().addAlert('User permanently removed.', 'success');
+            await Promise.all([
+                get().fetchDashboard(),
+                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+            ]);
+        } catch (error) {
+            get().addAlert(getApiErrorMessage(error, 'Unable to remove user.'), 'error');
+            throw error;
+        }
+    },
 }));
 
 export default useAppStore;

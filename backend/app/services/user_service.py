@@ -181,3 +181,111 @@ def deactivate_user(
 
     db.commit()
     return True, "User deactivated successfully"
+
+
+def get_user_include_inactive(
+    db: Session,
+    company_id: UUID,
+    user_id: UUID,
+) -> User | None:
+    """Get a user including deactivated ones (for reactivation/removal)."""
+    return db.query(User).filter(
+        User.id == user_id,
+        User.company_id == company_id,
+    ).first()
+
+
+def reactivate_user(
+    db: Session,
+    company_id: UUID,
+    user_id: UUID,
+) -> tuple[User | None, str]:
+    """Reactivate a deactivated user. Increments subscription usage."""
+    user = get_user_include_inactive(db, company_id, user_id)
+    if not user:
+        return None, "User not found"
+
+    if user.is_active:
+        return None, "User is already active"
+
+    # Check subscription limits before reactivating
+    subscription = db.query(Subscription).filter(
+        Subscription.company_id == company_id,
+    ).first()
+    if subscription:
+        if subscription.current_usage_users >= subscription.max_users:
+            return None, f"User limit reached ({subscription.max_users}). Upgrade plan to reactivate."
+        subscription.current_usage_users += 1
+
+    user.is_active = True
+    user.failed_login_attempts = 0
+    user.locked_until = None
+
+    db.commit()
+    db.refresh(user)
+    return user, ""
+
+
+def remove_user(
+    db: Session,
+    company_id: UUID,
+    user_id: UUID,
+) -> tuple[bool, str]:
+    """
+    Permanently remove a user and clean up related data.
+    Tasks assigned to the user are unassigned (not deleted).
+    """
+    user = get_user_include_inactive(db, company_id, user_id)
+    if not user:
+        return False, "User not found"
+
+    if user.role == "owner":
+        return False, "Cannot remove the company owner"
+
+    # \u2500\u2500 Active-Task Safety Guard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    # Prevent removing a user who still has in-flight tasks to avoid
+    # breaking workflow continuity. Caller must reassign tasks first.
+    from app.models.task import Task as TaskModel
+    _TERMINAL_STATUSES = {"completed", "dispatched"}
+    active_task_count = (
+        db.query(TaskModel)
+        .filter(
+            TaskModel.company_id == company_id,
+            TaskModel.assigned_to == user_id,
+            TaskModel.status.notin_(_TERMINAL_STATUSES),
+        )
+        .count()
+    )
+    if active_task_count > 0:
+        return False, (
+            f"Cannot remove user: they have {active_task_count} active task(s) still assigned. "
+            "Please reassign or complete those tasks first."
+        )
+
+    # Unassign tasks instead of deleting them
+    from app.models.task import Task
+    db.query(Task).filter(
+        Task.company_id == company_id,
+        Task.assigned_to == user_id,
+    ).update({Task.assigned_to: None}, synchronize_session="fetch")
+
+    # Nullify created_by references
+    db.query(Task).filter(
+        Task.company_id == company_id,
+        Task.created_by == user_id,
+    ).update({Task.created_by: None}, synchronize_session="fetch")
+
+    # Decrement subscription usage if user was active
+    if user.is_active:
+        subscription = db.query(Subscription).filter(
+            Subscription.company_id == company_id,
+        ).first()
+        if subscription and subscription.current_usage_users > 0:
+            subscription.current_usage_users -= 1
+
+    # Delete the user — DB cascade handles TaskLog.user_id (SET NULL),
+    # TaskImage.user_id (SET NULL), etc.
+    db.delete(user)
+    db.commit()
+    return True, "User permanently removed"
+

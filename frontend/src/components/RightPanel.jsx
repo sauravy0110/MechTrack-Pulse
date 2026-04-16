@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
-import { Plus, X, Zap } from 'lucide-react';
+import { Plus, Trash2, X, Zap } from 'lucide-react';
 import OwnerBusinessPanel from './OwnerBusinessPanel';
 import TaskWorkspacePanel from './TaskWorkspacePanel';
 import JobLifecycleTracker from './JobLifecycleTracker';
@@ -47,16 +47,19 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const assignTask = useAppStore((s) => s.assignTask);
     const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
     const openJobCreationModal = useAppStore((s) => s.openJobCreationModal);
+    const deleteTask = useAppStore((s) => s.deleteTask);
     const userRole = useAuthStore((s) => s.user?.role);
 
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
     const canAssignTask = userRole === 'owner' || userRole === 'supervisor';
+    const canDeleteTask = userRole === 'owner' || userRole === 'supervisor';
     const canControlWorkflow = userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator';
 
     const [assigningTaskId, setAssigningTaskId] = useState('');
     const [assignmentErrors, setAssignmentErrors] = useState({});
     const [statusUpdating, setStatusUpdating] = useState('');
     const [statusError, setStatusError] = useState('');
+    const [deletingTask, setDeletingTask] = useState(false);
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
 
@@ -280,6 +283,25 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                             {statusError && <p className="text-[10px] text-danger">{statusError}</p>}
                                         </>
                                     )}
+                                </div>
+                            )}
+
+                            {canDeleteTask && (
+                                <div className="mt-4 border-t border-border/60 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            if (!confirm(`Permanently delete "${selectedTask.title}"? This will remove all related data.`)) return;
+                                            setDeletingTask(true);
+                                            try { await deleteTask(selectedTask.id); }
+                                            finally { setDeletingTask(false); }
+                                        }}
+                                        disabled={deletingTask}
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-danger/25 bg-danger/8 px-4 py-2.5 text-xs font-semibold text-danger transition hover:bg-danger/15 disabled:opacity-60"
+                                    >
+                                        <Trash2 size={13} />
+                                        {deletingTask ? 'Deleting...' : 'Delete Task'}
+                                    </button>
                                 </div>
                             )}
 

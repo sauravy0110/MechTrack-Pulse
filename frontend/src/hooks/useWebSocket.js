@@ -19,6 +19,7 @@ export default function useWebSocket(companyId) {
     const updateMachine = useAppStore((state) => state.updateMachine);
     const updateOperator = useAppStore((state) => state.updateOperator);
     const updateUser = useAppStore((state) => state.updateUser);
+    const removeTaskById = useAppStore((state) => state.removeTaskById);
     const fetchDashboard = useAppStore((state) => state.fetchDashboard);
     const addAlert = useAppStore((state) => state.addAlert);
 
@@ -89,6 +90,10 @@ export default function useWebSocket(companyId) {
                             updateUser(msg.data);
                             scheduleDashboardRefresh();
                             break;
+                        case 'task_deleted':
+                            removeTaskById(msg.data?.id);
+                            scheduleDashboardRefresh();
+                            break;
                         case 'notification':
                             addAlert(msg.message, msg.severity || 'info');
                             break;
@@ -139,7 +144,7 @@ export default function useWebSocket(companyId) {
                 }, delay);
             }
         }
-    }, [companyId, updateTask, updateMachine, updateOperator, updateUser, fetchDashboard, addAlert, scheduleDashboardRefresh]);
+    }, [companyId, updateTask, updateMachine, updateOperator, updateUser, removeTaskById, fetchDashboard, addAlert, scheduleDashboardRefresh]);
 
     useEffect(() => {
         connectRef.current = connect;

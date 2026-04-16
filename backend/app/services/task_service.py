@@ -471,3 +471,42 @@ def add_task_note(
     db.commit()
     db.refresh(entry)
     return entry, ""
+
+
+def delete_task(
+    db: Session,
+    company_id: UUID,
+    task_id: UUID,
+    user_id: UUID,
+) -> tuple[bool, str]:
+    """
+    Permanently delete a task and all its related data.
+    Owner/supervisor only. Cascades to logs, images, job_specs, job_processes, etc.
+    """
+    task = get_task(db, company_id, task_id)
+    if not task:
+        return False, "Task not found"
+
+    # Decrement operator task count if assigned
+    if task.assigned_to:
+        operator_service.decrement_task_count(db, task.assigned_to)
+
+    # Remove from queue if queued
+    remove_from_queue(company_id, task.id)
+
+    # Decrement subscription task usage
+    sub = db.query(Subscription).filter(
+        Subscription.company_id == company_id,
+    ).first()
+    if sub and sub.current_usage_tasks > 0:
+        sub.current_usage_tasks -= 1
+
+    # Stamp deleted_at for audit/compliance before hard delete
+    task.deleted_at = datetime.now(timezone.utc)
+    db.flush()
+
+    # Delete the task — CASCADE handles logs, images, job_specs, job_processes,
+    # qc_reports, assignments, rework_logs, dispatch_records, production_logs, ai_reports
+    db.delete(task)
+    db.commit()
+    return True, ""

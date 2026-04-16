@@ -76,13 +76,39 @@ DEFAULT_OPENROUTER_VISION_MODEL = "openrouter/free"
 VISION_OCR_SYSTEM_PROMPT = """
 You are an expert mechanical engineering drawing interpreter.
 
-Your task is to extract ALL dimensions and specifications from the provided engineering drawing image with maximum accuracy.
+Your task is to extract ONLY actual part dimensions from the provided engineering drawing image.
 
-========================
+========================================
+DIMENSION ANCHOR RULE (MOST IMPORTANT)
+========================================
+
+A number is ONLY a valid dimension if it satisfies AT LEAST ONE of these:
+  1. It has a geometric symbol prefix: Ø (diameter), R (radius), M (thread)
+  2. It sits between dimension arrows/lines on the drawing
+  3. It is explicitly labeled (e.g., "Overall Length = 340")
+  4. It is annotated with GD&T or surface finish symbols (e.g., Ra, ⏤, ◎)
+
+Numbers that do NOT meet any anchor rule MUST be excluded.
+
+========================================
+MANDATORY IGNORE LIST
+========================================
+
+Do NOT extract any of the following — they are NOT part dimensions:
+  - Scale values (e.g., "1:2", "Scale 1:5", "2:1")
+  - Projection symbols (First Angle, Third Angle)
+  - Sheet/drawing numbers (e.g., "DWG-001", "Sheet 1 of 2")
+  - Title block values (drawn by, date, revision, company name)
+  - View labels (e.g., "Section A-A", "Detail B")
+  - Part numbers, serial numbers, or order codes
+  - Page numbers, item numbers in BOM tables
+  - Any number appearing inside the title block border
+
+========================================
 CRITICAL EXTRACTION RULES
-========================
+========================================
 
-1. ONLY extract values that are explicitly written in the drawing.
+1. ONLY extract values that are EXPLICITLY WRITTEN as part geometry dimensions.
 2. NEVER estimate dimensions from visual proportions, scaling, or geometry.
 3. NEVER hallucinate or invent missing values.
 4. If a value is unclear, partially visible, or ambiguous -> return null.
@@ -91,46 +117,29 @@ CRITICAL EXTRACTION RULES
    - Radius: R (e.g., R6)
    - Threads: M (e.g., M12)
    - Units: assume mm unless specified
-6. Do NOT assume:
-   - Threads
-   - Tolerances
-   - Surface finish
-   - Fits or GD&T
-   unless explicitly written.
+6. Do NOT assume threads, tolerances, surface finish, fits, or GD&T
+   unless EXPLICITLY annotated with the correct symbol or label.
+7. Surface Roughness: ONLY extract if you see the Ra symbol (▽) or "Ra" text.
+8. Runout/Concentricity: ONLY extract if you see the GD&T frame symbol.
+9. Thread: ONLY extract if prefixed with 'M' (e.g., M12, M24x2).
 
-========================
-EXTRACTION REQUIREMENTS
-========================
+========================================
+EXTRACTION PRIORITY ORDER
+========================================
 
-Extract ALL visible dimensions from the drawing.
-You MUST extract:
+1. Dimensions with Ø, R, or M prefix (HIGHEST confidence)
+2. Dimensions between dimension lines/arrows
+3. Labeled text values (e.g., "length = 340")
+4. Standalone numbers ONLY if 100% certain they are part geometry
 
-1. Linear dimensions (lengths, steps, total length)
-2. Diameters (Ø values)
-3. Radii (R values)
-4. Threads (M values)
-5. Angles (if present)
-6. Notes / annotations (exact text)
-7. Feature-specific dimensions (slots, keyways, holes)
+If a standalone number has no anchor, DO NOT INCLUDE IT.
 
-Do NOT return only one category.
-If multiple numbers exist in a category, include ALL of them in reading order.
-
-========================
-STRUCTURING RULES
-========================
-
-- Group values logically
-- Avoid duplicates
-- Maintain numeric precision exactly as written
-- Return values as numbers without symbols, but preserve type in category
-
-========================
+========================================
 OUTPUT FORMAT (STRICT JSON ONLY)
-========================
+========================================
 
 {
-  "raw_text": "Full OCR text exactly as seen",
+  "raw_text": "Full OCR text exactly as seen, including title block text",
   "dimensions": {
     "lengths_mm": [],
     "diameters_mm": [],
@@ -139,19 +148,8 @@ OUTPUT FORMAT (STRICT JSON ONLY)
     "angles_deg": []
   },
   "features": {
-    "keyways": [
-      {
-        "width_mm": null,
-        "depth_mm": null
-      }
-    ],
-    "slots": [
-      {
-        "width_mm": null,
-        "length_mm": null,
-        "end_radius_mm": null
-      }
-    ]
+    "keyways": [{"width_mm": null, "depth_mm": null}],
+    "slots": [{"width_mm": null, "length_mm": null, "end_radius_mm": null}]
   },
   "tolerances": {
     "surface_roughness_Ra": null,
@@ -165,25 +163,28 @@ OUTPUT FORMAT (STRICT JSON ONLY)
   }
 }
 
-========================
+========================================
 CONFIDENCE SCORING RULES
-========================
+========================================
 
-- 0.9-1.0 -> clearly visible and readable
-- 0.7-0.9 -> minor ambiguity
+- 0.9-1.0 -> dimension has clear anchor (Ø, R, M, dimension lines)
+- 0.7-0.9 -> dimension is labeled but minor ambiguity exists
 - below 0.7 -> unclear / partially visible
-- 0.0 -> not present in drawing
+- 0.0 -> not present or cannot be confidently identified as a part dimension
 
-========================
+========================================
 FINAL INSTRUCTION
-========================
+========================================
 
 This is a precision-critical engineering task.
 
 If unsure -> return null instead of guessing.
+Accuracy is MORE important than completeness.
+It is BETTER to return fewer correct dimensions than many wrong ones.
 
-Do NOT prioritize completeness over correctness.
-Accuracy is more important than filling all fields.
+Before including ANY number, ask yourself:
+"Does this number have a dimensional anchor (symbol, arrow, label)?"
+If the answer is no -> DO NOT INCLUDE IT.
 """.strip()
 
 
@@ -343,6 +344,32 @@ def _context_window(text: str, start: int, end: int, *, radius: int = 20) -> str
     return text[max(0, start - radius):min(len(text), end + radius)]
 
 
+# Patterns for text that indicates non-geometry context (title block, scale, metadata)
+_TITLE_BLOCK_KEYWORDS = re.compile(
+    r"\b(?:scale|projection|drawn\s*by|checked\s*by|approved|date|rev(?:ision)?|"
+    r"sheet|dwg|drawing\s*no|part\s*no|serial|order|job\s*no|material\s*grade|"
+    r"tolerance\s*unless|general\s*tolerance|all\s*dimensions\s*in|third\s*angle|"
+    r"first\s*angle|do\s*not\s*scale|weight|mass|finish|treatment|hardness|heat)\b",
+    flags=re.IGNORECASE,
+)
+
+# Pattern matching scale notation like "1:2", "Scale 1:5", "2:1"
+_SCALE_PATTERN = re.compile(
+    r"(?:scale\s*[:=]?\s*)?\d+\s*:\s*\d+",
+    flags=re.IGNORECASE,
+)
+
+
+def _is_in_title_block_context(text: str, start: int, end: int) -> bool:
+    """Check if a number is near title block / scale / metadata keywords."""
+    context = text[max(0, start - 60):min(len(text), end + 40)].lower()
+    if _TITLE_BLOCK_KEYWORDS.search(context):
+        return True
+    if _SCALE_PATTERN.search(context):
+        return True
+    return False
+
+
 def parse_dimensions(text: str | None) -> dict[str, list[str]]:
     if not text or not text.strip():
         return {
@@ -357,18 +384,22 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
     diameters = _dedupe_preserve_order([
         match.group(1)
         for match in re.finditer(r"(?:Ø|⌀)\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+        if not _is_in_title_block_context(normalized_text, match.start(), match.end())
     ])
     radii = _dedupe_preserve_order([
         match.group(1)
         for match in re.finditer(r"\bR\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+        if not _is_in_title_block_context(normalized_text, match.start(), match.end())
     ])
     threads = _dedupe_preserve_order([
         f"M{match.group(1)}"
         for match in re.finditer(r"\bM\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+        if not _is_in_title_block_context(normalized_text, match.start(), match.end())
     ])
     angles = _dedupe_preserve_order([
         match.group(1)
         for match in re.finditer(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", normalized_text, flags=re.IGNORECASE)
+        if not _is_in_title_block_context(normalized_text, match.start(), match.end())
     ])
 
     lengths: list[str] = []
@@ -383,6 +414,8 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
         prefix = normalized_text[max(0, start - 4):start]
         suffix = normalized_text[end:end + 8]
         context = _context_window(normalized_text, start, end)
+
+        # Skip values already captured by symbol-based parsers
         if "Ø" in prefix or "⌀" in prefix:
             continue
         if re.search(r"\bR\s*$", prefix, flags=re.IGNORECASE):
@@ -391,7 +424,14 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
             continue
         if "°" in suffix or suffix.lower().startswith("deg"):
             continue
+        # Skip tolerance-related values
         if re.search(r"\b(?:runout|concentricity|roughness|tolerance|tol|ra)\b", context, flags=re.IGNORECASE):
+            continue
+        # Skip values in title block / scale / metadata context
+        if _is_in_title_block_context(normalized_text, start, end):
+            continue
+        # Skip values preceded by scale-like patterns (e.g. "1:" or ":2")
+        if re.search(r"\d\s*:\s*$", prefix) or re.search(r"^\s*:\s*\d", suffix):
             continue
         lengths.append(value)
 
@@ -509,6 +549,48 @@ def validate_length_chain(lengths: list[str], total: str | None) -> bool:
     if total_value is None or not length_values or any(value is None for value in length_values):
         return False
     return sum(length_values, Decimal("0")) == total_value
+
+
+def validate_geometry_consistency(diameters: list[str], lengths: list[str]) -> tuple[bool, str]:
+    """
+    Cross-validate diameters against lengths for shaft geometry sanity.
+
+    Rules:
+    - A shaft diameter should NEVER exceed the total shaft length
+    - If max_diameter > max_length -> something was misclassified
+    - Returns (is_consistent, reason)
+    """
+    diameter_values = [_to_decimal(d) for d in diameters]
+    length_values = [_to_decimal(l) for l in lengths]
+
+    diameter_values = [d for d in diameter_values if d is not None]
+    length_values = [l for l in length_values if l is not None]
+
+    if not diameter_values or not length_values:
+        return True, ""  # Not enough data to validate
+
+    max_dia = max(diameter_values)
+    max_len = max(length_values)
+
+    if max_dia >= max_len:
+        return False, (
+            f"Geometry inconsistency: max diameter ({max_dia} mm) ≥ max length ({max_len} mm). "
+            "A shaft diameter cannot exceed the shaft length. Values may be misclassified."
+        )
+    return True, ""
+
+
+def flag_duplicate_pattern(values: list[str]) -> bool:
+    """
+    Detect noisy OCR repetition: if more than 50% of values are duplicates,
+    the parser likely hit a repeated number from noise or bad parsing.
+
+    Returns True if duplication ratio is HIGH (low confidence signal).
+    """
+    if len(values) < 3:
+        return False
+    unique_ratio = len(set(values)) / len(values)
+    return unique_ratio < 0.5
 
 
 def confidence_score(value: str | None, text: str | None, *, high: bool = True) -> float:
@@ -780,13 +862,30 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
                     candidates.append(candidate)
                     existing_field_names.add(field_name)
 
+    # ── Context-Aware Tolerance Validation ─────────────────────
+    # Only accept tolerance fields if their KEYWORD exists in raw_text
     tolerance_map = {
         "Surface_Roughness": ("surface_roughness_Ra", "Ra"),
         "Runout_Tolerance": ("runout_mm", "mm"),
         "Concentricity_Tolerance": ("concentricity_mm", "mm"),
     }
+    tolerance_keyword_map = {
+        "Surface_Roughness": ["ra", "roughness", "surface finish", "▽"],
+        "Runout_Tolerance": ["runout", "run out", "run-out", "⏤"],
+        "Concentricity_Tolerance": ["concentricity", "concentric", "◎"],
+    }
+    raw_text_lower = raw_text.lower()
+
     for field_name, (payload_key, unit) in tolerance_map.items():
         if field_name in existing_field_names:
+            continue
+        # Context-aware check: reject if keyword is NOT in raw text
+        keywords = tolerance_keyword_map.get(field_name, [])
+        keyword_found = any(kw in raw_text_lower for kw in keywords)
+        if not keyword_found:
+            tol_value = _stringify_value(tolerances.get(payload_key))
+            if tol_value:
+                logger.debug("Rejecting %s=%s: keyword not found in raw text", field_name, tol_value)
             continue
         candidate = _candidate_from_source(field_name, tolerances.get(payload_key), unit, source_type="tolerance")
         if candidate:
@@ -813,16 +912,48 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
                 "review_status": "invalid",
             })
             continue
-        if field_name == "Thread_Spec" and not validate_thread(cleaned_value):
-            rejected_fields.append({"field_name": field_name, "reason": "Thread size is outside the allowed standard set"})
-            validated_specs.append({
-                "field_name": field_name,
-                "ai_value": cleaned_value,
-                "ai_confidence": 0.0,
-                "unit": unit,
-                "review_status": "invalid",
-            })
-            continue
+
+        # ── Thread context validation: M{size} must appear in raw text ──
+        if field_name == "Thread_Spec":
+            thread_match = re.search(r"M\s*\d+", raw_text, flags=re.IGNORECASE)
+            if not thread_match:
+                rejected_fields.append({"field_name": field_name, "reason": "Thread spec (M prefix) not found in drawing text"})
+                validated_specs.append({
+                    "field_name": field_name,
+                    "ai_value": cleaned_value,
+                    "ai_confidence": 0.0,
+                    "unit": unit,
+                    "review_status": "invalid",
+                })
+                continue
+            if not validate_thread(cleaned_value):
+                rejected_fields.append({"field_name": field_name, "reason": "Thread size is outside the allowed standard set"})
+                validated_specs.append({
+                    "field_name": field_name,
+                    "ai_value": cleaned_value,
+                    "ai_confidence": 0.0,
+                    "unit": unit,
+                    "review_status": "invalid",
+                })
+                continue
+
+        # ── Diameter context validation: Ø or ⌀ prefix should be present ──
+        if field_name.startswith("Diameter_") and source_type == "ocr_dimensions":
+            diameter_anchored = bool(
+                re.search(r"(?:Ø|⌀)\s*" + re.escape(cleaned_value), raw_text)
+                or re.search(r"(?:diameter|dia|od)\s*[:=]?\s*" + re.escape(cleaned_value), raw_text, flags=re.IGNORECASE)
+            )
+            if not diameter_anchored:
+                # Still accept but lower confidence
+                validated_specs.append({
+                    "field_name": field_name,
+                    "ai_value": cleaned_value,
+                    "ai_confidence": 0.5,
+                    "unit": unit,
+                    "review_status": "needs_review",
+                })
+                continue
+
         if not is_tolerance_field and unit in {"mm", ""} and field_name != "Thread_Spec" and not validate_range(cleaned_value):
             rejected_fields.append({"field_name": field_name, "reason": "Value is outside the accepted engineering range"})
             validated_specs.append({
@@ -844,6 +975,32 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
         })
 
     length_chain_ok = validate_length_chain(lengths[1:], lengths[0]) if len(lengths) > 1 else False
+
+    # ── Mutual Consistency Check ──────────────────────────────────
+    geometry_ok, geometry_warning = validate_geometry_consistency(diameters, lengths)
+    if not geometry_ok:
+        logger.warning("Geometry consistency check failed: %s", geometry_warning)
+        # Downgrade confidence of all diameter and length specs
+        for spec in validated_specs:
+            if spec["field_name"].startswith(("Diameter_", "Overall_Length", "Linear_Length_")):
+                spec["ai_confidence"] = min(spec["ai_confidence"], 0.5)
+                spec["review_status"] = "needs_review"
+
+    # ── Duplicate Pattern Check ─────────────────────────────────
+    diameter_duplication = flag_duplicate_pattern(diameters)
+    length_duplication = flag_duplicate_pattern(lengths)
+    if diameter_duplication or length_duplication:
+        noisy_prefixes = []
+        if diameter_duplication:
+            noisy_prefixes.append("Diameter_")
+        if length_duplication:
+            noisy_prefixes.append(("Overall_Length", "Linear_Length_"))
+        logger.warning("Duplicate pattern detected in: %s", noisy_prefixes)
+        for spec in validated_specs:
+            if any(spec["field_name"].startswith(p if isinstance(p, str) else p) for p in noisy_prefixes):
+                spec["ai_confidence"] = min(spec["ai_confidence"], 0.55)
+                spec["review_status"] = "needs_review"
+
     review_counts = {
         "high_confidence": len([spec for spec in validated_specs if spec["ai_confidence"] >= 0.9]),
         "medium_review": len([spec for spec in validated_specs if 0.7 <= spec["ai_confidence"] < 0.9]),
@@ -855,6 +1012,10 @@ def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dic
         "rejected_fields": rejected_fields,
         "review_counts": review_counts,
         "length_chain_consistent": length_chain_ok,
+        "geometry_consistent": geometry_ok,
+        "geometry_warning": geometry_warning or None,
+        "diameter_duplication_detected": diameter_duplication,
+        "length_duplication_detected": length_duplication,
         "raw_text_present": bool(raw_text.strip()),
     }
 

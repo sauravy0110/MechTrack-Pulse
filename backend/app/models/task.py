@@ -107,6 +107,12 @@ class Task(Base):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    # Soft-delete audit timestamp — set just before hard delete for compliance / recovery debugging
+    deleted_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+        doc="Timestamp recorded just before hard delete. NULL for active tasks.",
+    )
 
     # ── Relationships ────────────────────────────────────────
     assignee = relationship("User", foreign_keys=[assigned_to])

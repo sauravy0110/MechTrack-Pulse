@@ -45,6 +45,7 @@ from app.services.task_service import (
     add_task_note,
     assign_task,
     create_task,
+    delete_task,
     get_task,
     get_task_logs,
     list_tasks,
@@ -334,6 +335,48 @@ def update_task_route(
     )
     db.commit()
     return _task_to_response(task)
+
+
+# ── Delete Task ──────────────────────────────────────────────
+
+@router.delete("/{task_id}", status_code=status.HTTP_200_OK)
+async def delete_task_route(
+    task_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(RequirePermission(Permission.DELETE_TASK)),
+):
+    """Permanently delete a task and all its related data. Owner/supervisor only."""
+    # Capture title for notification before deletion
+    task = get_task(db, current_user.company_id, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task_title = task.title
+
+    success, error = delete_task(db, current_user.company_id, task_id, current_user.id)
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="task.deleted",
+        resource_type="task",
+        resource_id=task_id,
+        details={"title": task_title},
+    )
+    db.commit()
+
+    from app.api.v1.websocket import broadcast_task_deleted, broadcast_notification
+    background_tasks.add_task(broadcast_task_deleted, current_user.company_id, str(task_id))
+    background_tasks.add_task(
+        broadcast_notification,
+        current_user.company_id,
+        f"Task '{task_title}' was deleted.",
+        "info",
+    )
+    return {"detail": f"Task '{task_title}' deleted successfully"}
 
 
 # ── Update Task Status ──────────────────────────────────────

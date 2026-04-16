@@ -2,11 +2,13 @@
 MechTrack Pulse — User Management API Routes
 
 Endpoints:
-  POST   /api/v1/users/          → Create user (owner only)
-  GET    /api/v1/users/          → List users in company
-  GET    /api/v1/users/{id}      → Get user detail
-  PATCH  /api/v1/users/{id}      → Update user
-  DELETE /api/v1/users/{id}      → Deactivate user (soft delete)
+  POST   /api/v1/users/                    → Create user (owner only)
+  GET    /api/v1/users/                    → List users in company
+  GET    /api/v1/users/{id}                → Get user detail
+  PATCH  /api/v1/users/{id}                → Update user
+  DELETE /api/v1/users/{id}                → Deactivate user (soft delete)
+  POST   /api/v1/users/{id}/reactivate     → Reactivate user
+  DELETE /api/v1/users/{id}/permanent       → Permanently remove user
 
 SECURITY:
   - company_id comes from JWT token (tenant isolation)
@@ -36,6 +38,8 @@ from app.services.user_service import (
     deactivate_user,
     get_user,
     list_users,
+    reactivate_user,
+    remove_user,
     update_user,
 )
 
@@ -223,3 +227,77 @@ def deactivate_user_route(
         _user_to_response(user).model_dump(),
     )
     return {"message": message}
+
+
+# ── Reactivate User ─────────────────────────────────────────
+
+@router.post("/{user_id}/reactivate", response_model=UserResponse)
+def reactivate_user_route(
+    user_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("owner")),
+):
+    """Reactivate a deactivated user. Owner only."""
+    user, error = reactivate_user(db, current_user.company_id, user_id)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="user.reactivated",
+        resource_type="user",
+        resource_id=user.id,
+        details={"email": user.email, "role": user.role},
+    )
+    db.commit()
+    background_tasks.add_task(
+        broadcast_user_update,
+        current_user.company_id,
+        _user_to_response(user).model_dump(),
+    )
+    return _user_to_response(user)
+
+
+# ── Permanently Remove User ─────────────────────────────────
+
+@router.delete("/{user_id}/permanent")
+def remove_user_route(
+    user_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("owner")),
+):
+    """Permanently remove a user and all their associated data. Owner only. Irreversible."""
+    from app.services.user_service import get_user_include_inactive
+    user = get_user_include_inactive(db, current_user.company_id, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user_name = user.full_name
+    user_email = user.email
+    user_role = user.role
+
+    success, message = remove_user(db, current_user.company_id, user_id)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+
+    record_audit_log(
+        db,
+        company_id=current_user.company_id,
+        actor=current_user,
+        action="user.removed",
+        resource_type="user",
+        resource_id=user_id,
+        details={"email": user_email, "role": user_role, "permanent": True},
+    )
+    db.commit()
+    from app.api.v1.websocket import broadcast_notification
+    background_tasks.add_task(
+        broadcast_notification,
+        current_user.company_id,
+        f"User '{user_name}' has been permanently removed.",
+        "info",
+    )
+    return {"message": f"User '{user_name}' permanently removed"}

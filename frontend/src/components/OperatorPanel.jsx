@@ -1,7 +1,8 @@
 import { memo, useMemo, useState } from 'react';
 import useAppStore from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
-import { UserPlus, Users, UserMinus } from 'lucide-react';
+import api from '../api/client';
+import { Eye, EyeOff, RefreshCw, Trash2, UserMinus, UserPlus, Users } from 'lucide-react';
 
 const ROLE_SECTIONS = [
     { role: 'supervisor', title: 'Supervisors' },
@@ -14,6 +15,7 @@ const STATUS_CONFIG = {
     busy: { label: 'Busy', dot: 'bg-warning', text: 'text-warning' },
     offline: { label: 'Offline', dot: 'bg-idle', text: 'text-text-muted' },
     active: { label: 'Active', dot: 'bg-accent', text: 'text-accent' },
+    deactivated: { label: 'Deactivated', dot: 'bg-danger/40', text: 'text-danger' },
 };
 
 const MAX_TASKS = 5;
@@ -32,10 +34,17 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
     const togglingDuty = useAppStore((state) => state.togglingDuty);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
     const deactivateUser = useAppStore((state) => state.deactivateUser);
+    const reactivateUser = useAppStore((state) => state.reactivateUser);
+    const removeUser = useAppStore((state) => state.removeUser);
+    const fetchUsers = useAppStore((state) => state.fetchUsers);
     const currentUser = useAuthStore((state) => state.user);
     const [error, setError] = useState('');
-    const [deactivatingId, setDeactivatingId] = useState('');
+    const [actionId, setActionId] = useState('');
+    const [showInactive, setShowInactive] = useState(false);
+    const [inactiveUsers, setInactiveUsers] = useState([]);
+    const [loadingInactive, setLoadingInactive] = useState(false);
 
+    const isOwner = currentUser?.role === 'owner';
     const canManageUsers = currentUser?.role === 'owner' || currentUser?.role === 'supervisor';
     const operatorById = useMemo(() => Object.fromEntries(operators.map((o) => [o.id, o])), [operators]);
 
@@ -60,13 +69,53 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
 
     const handleDeactivate = async (id, e) => {
         e.stopPropagation();
-        if (!confirm('Are you sure you want to remove this user from the company?')) return;
-        setDeactivatingId(id);
+        if (!confirm('Are you sure you want to deactivate this user? They will be logged out immediately.')) return;
+        setActionId(id);
         try {
             await deactivateUser(id);
         } finally {
-            setDeactivatingId('');
+            setActionId('');
         }
+    };
+
+    const handleReactivate = async (id, e) => {
+        e.stopPropagation();
+        setActionId(id);
+        try {
+            await reactivateUser(id);
+            // Remove from inactive list after reactivation
+            setInactiveUsers((prev) => prev.filter((u) => u.id !== id));
+        } finally {
+            setActionId('');
+        }
+    };
+
+    const handleRemove = async (id, name, e) => {
+        e.stopPropagation();
+        if (!confirm(`PERMANENTLY delete "${name}"? This action cannot be undone. All their data will be removed.`)) return;
+        setActionId(id);
+        try {
+            await removeUser(id);
+            setInactiveUsers((prev) => prev.filter((u) => u.id !== id));
+        } finally {
+            setActionId('');
+        }
+    };
+
+    const toggleInactiveView = async () => {
+        if (!showInactive) {
+            setLoadingInactive(true);
+            try {
+                const { data } = await api.get('/users/?include_inactive=true');
+                const inactive = data.filter((u) => u.is_active === false && u.role !== 'owner');
+                setInactiveUsers(inactive);
+            } catch {
+                setInactiveUsers([]);
+            } finally {
+                setLoadingInactive(false);
+            }
+        }
+        setShowInactive((prev) => !prev);
     };
 
     const counts = useMemo(() => ({
@@ -106,12 +155,24 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
                             <span>{counts.clients} cli</span>
                         </div>
                     </div>
-                    {canManageUsers && (
-                        <button type="button" onClick={openAddUserModal}
-                            className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-                            <UserPlus size={10} /> Add
-                        </button>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                        {isOwner && (
+                            <button
+                                type="button"
+                                onClick={toggleInactiveView}
+                                className={`p-1.5 rounded-lg transition-all ${showInactive ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'}`}
+                                title={showInactive ? 'Hide deactivated users' : 'Show deactivated users'}
+                            >
+                                {showInactive ? <EyeOff size={14} /> : <Eye size={14} />}
+                            </button>
+                        )}
+                        {canManageUsers && (
+                            <button type="button" onClick={openAddUserModal}
+                                className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
+                                <UserPlus size={10} /> Add
+                            </button>
+                        )}
+                    </div>
                 </div>
 
                 {currentUser?.role === 'operator' && (
@@ -172,9 +233,9 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
                                                         <button 
                                                             type="button" 
                                                             onClick={(e) => handleDeactivate(member.id, e)}
-                                                            disabled={deactivatingId === member.id}
+                                                            disabled={actionId === member.id}
                                                             className="text-text-muted hover:text-danger hover:bg-danger/10 p-1.5 rounded-lg transition-all opacity-50 hover:opacity-100"
-                                                            title="Remove User"
+                                                            title="Deactivate User"
                                                         >
                                                             <UserMinus size={14} />
                                                         </button>
@@ -201,6 +262,64 @@ const OperatorPanel = memo(function OperatorPanel({ embedded = false }) {
                         </section>
                     ) : null
                 ))}
+
+                {/* Deactivated users section — owner only */}
+                {showInactive && isOwner && (
+                    <section>
+                        <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-danger/70">
+                            Deactivated ({inactiveUsers.length})
+                        </p>
+                        {loadingInactive ? (
+                            <div className="px-3 py-4 text-center">
+                                <div className="mx-auto h-5 w-5 rounded-full border-2 border-accent/30 border-t-accent animate-spin" />
+                            </div>
+                        ) : inactiveUsers.length > 0 ? (
+                            <div className="space-y-1">
+                                {inactiveUsers.map((member) => {
+                                    const sc = STATUS_CONFIG.deactivated;
+                                    return (
+                                        <div key={member.id} className="rounded-xl border border-danger/15 bg-danger/3 px-3 py-2.5 opacity-75">
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <div className="relative">
+                                                    <div className={`w-2 h-2 rounded-full ${sc.dot}`} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-medium text-text-muted truncate">{member.full_name}</p>
+                                                    <p className="text-[10px] text-text-muted/60 truncate">{member.email}</p>
+                                                </div>
+                                                <span className={`text-[9px] font-mono uppercase tracking-wider ${sc.text}`}>{sc.label}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleReactivate(member.id, e)}
+                                                    disabled={actionId === member.id}
+                                                    className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-success/25 bg-success/8 px-3 py-1.5 text-[10px] font-semibold text-success transition hover:bg-success/15 disabled:opacity-60"
+                                                >
+                                                    <RefreshCw size={11} />
+                                                    {actionId === member.id ? '...' : 'Reactivate'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleRemove(member.id, member.full_name, e)}
+                                                    disabled={actionId === member.id}
+                                                    className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-danger/25 bg-danger/8 px-3 py-1.5 text-[10px] font-semibold text-danger transition hover:bg-danger/15 disabled:opacity-60"
+                                                    title="Permanently remove — cannot be undone"
+                                                >
+                                                    <Trash2 size={11} />
+                                                    Remove
+                                                </button>
+                                            </div>
+                                            <p className="mt-1.5 text-[9px] text-text-muted/50 capitalize">{member.role} access</p>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <p className="px-3 py-4 text-center text-[10px] text-text-muted">No deactivated users</p>
+                        )}
+                    </section>
+                )}
 
                 {!loadingUsers && totalMembers === 0 && (
                     <div className="px-3 py-8 text-center">

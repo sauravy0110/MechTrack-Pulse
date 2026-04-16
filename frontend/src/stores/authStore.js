@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import api from '../api/client';
+import { resetBrandIntro } from '../components/BrandIntro';
 
 const useAuthStore = create((set, get) => ({
     token: localStorage.getItem('token') || null,
@@ -79,6 +80,7 @@ const useAuthStore = create((set, get) => ({
         localStorage.removeItem('token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('user');
+        resetBrandIntro();
         set({ token: null, user: null });
         window.location.assign('/login');
     },

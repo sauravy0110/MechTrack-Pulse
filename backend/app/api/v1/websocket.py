@@ -191,3 +191,11 @@ async def broadcast_user_update(company_id: UUID, user_data: dict):
         "type": "user_update",
         "data": user_data,
     })
+
+
+async def broadcast_task_deleted(company_id: UUID, task_id: str):
+    """Broadcast a task deletion event to all connected users in the company."""
+    await manager.broadcast(str(company_id), {
+        "type": "task_deleted",
+        "data": {"id": task_id},
+    })

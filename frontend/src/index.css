@@ -824,3 +824,394 @@ aside {
   color: var(--color-danger);
   box-shadow: 0 0 0 4px rgba(185, 28, 28, 0.08);
 }
+
+/* ══════════════════════════════════════════════════════════
+   BRAND LOGO ROTATION — Slow luxury gear spin
+   ══════════════════════════════════════════════════════════ */
+@keyframes brand-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.brand-logo-rotate {
+  animation: brand-rotate 15s linear infinite;
+  transform-origin: center;
+}
+
+/* Optional: pause on hover for interactivity */
+.brand-logo-rotate:hover {
+  animation-play-state: paused;
+}
+
+/* ══════════════════════════════════════════════════════════
+   BRAND SHINY TEXT — Metallic light sweep
+   ══════════════════════════════════════════════════════════ */
+@keyframes brand-shine {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.brand-shiny-text {
+  display: inline-block;
+  background: linear-gradient(
+    120deg,
+    var(--color-text-primary) 0%,
+    var(--color-text-primary) 35%,
+    var(--color-accent-glow) 50%,
+    var(--color-text-primary) 65%,
+    var(--color-text-primary) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: brand-shine 3.5s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL OVERLAY — Fixed viewport centering + scroll lock
+   ══════════════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg-overlay, rgba(0, 0, 0, 0.55));
+  padding: 1rem;
+  overflow-y: auto;
+  animation: modal-backdrop-in 0.25s ease forwards;
+}
+
+@keyframes modal-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modal-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-content-animate {
+  animation: modal-content-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* When modal is open, lock background scroll */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════════
+   MICRO-INTERACTIONS — Global smooth transitions
+   ══════════════════════════════════════════════════════════ */
+button,
+a,
+select,
+input,
+.interactive {
+  transition: all 0.2s ease;
+}
+
+/* Cards — subtle lift on hover */
+.glass-card {
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.25s ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-1px);
+}
+
+/* Active press feedback */
+button:active:not(:disabled),
+.interactive:active {
+  transform: scale(0.98);
+}
+
+/* ══════════════════════════════════════════════════════════
+   BRAND INTRO — Full-screen entry animation (polished)
+   ══════════════════════════════════════════════════════════ */
+
+/* Overlay — full viewport cover */
+.intro-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(47, 136, 164, 0.08), transparent 50%),
+    radial-gradient(circle at 70% 60%, rgba(16, 63, 82, 0.06), transparent 40%),
+    var(--color-bg-primary);
+  pointer-events: all;
+  will-change: opacity;
+}
+
+:root[data-theme="dark"] .intro-overlay {
+  background:
+    radial-gradient(circle at 30% 40%, rgba(111, 199, 223, 0.06), transparent 50%),
+    radial-gradient(circle at 70% 60%, rgba(47, 136, 164, 0.04), transparent 40%),
+    var(--color-bg-primary);
+}
+
+/* Content layout */
+.intro-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+/* Logo container */
+.intro-logo-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Tweak 2: Micro-physics overshoot merge ──────────────── */
+@keyframes intro-merge-top {
+  0%   { transform: translateY(-60px); opacity: 0; }
+  50%  { opacity: 1; }
+  80%  { transform: translateY(4px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes intro-merge-bottom {
+  0%   { transform: translateY(60px); opacity: 0; }
+  50%  { opacity: 1; }
+  80%  { transform: translateY(-4px); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+.intro-gear-half {
+  will-change: transform, opacity;
+}
+
+.intro-merge-top {
+  animation: intro-merge-top 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.intro-merge-bottom {
+  animation: intro-merge-bottom 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ── Tweak 3: Gear rim flash (one-shot highlight after merge) ── */
+.intro-gear-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.35), transparent 45%);
+  opacity: 0;
+  pointer-events: none;
+  animation: intro-gear-flash-kf 0.8s ease 1 forwards;
+}
+
+@keyframes intro-gear-flash-kf {
+  0%   { opacity: 0; }
+  50%  { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+
+/* Gear spin */
+@keyframes intro-gear-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.intro-gear-spin {
+  animation: intro-gear-spin 12s linear infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
+/* ── Title row — fixed height to prevent layout shift ───── */
+.intro-title-row {
+  display: flex;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.2rem);
+  letter-spacing: -0.04em;
+  line-height: 1;
+  height: clamp(2rem, 5vw, 3.2rem);
+  color: var(--color-text-primary);
+  will-change: transform, opacity;
+}
+
+/* ── Tweak 4: Sharper letter reveal with blur snap ──────── */
+@keyframes intro-letter-in {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+    filter: blur(6px);
+  }
+  80% {
+    filter: blur(1px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.intro-letter {
+  display: inline-block;
+  opacity: 0;
+  will-change: transform, opacity, filter;
+  animation: intro-letter-in 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Metallic shine sweep on individual letters */
+@keyframes intro-letter-shine {
+  0%, 100% {
+    background-position: -200% center;
+  }
+  50% {
+    background-position: 200% center;
+  }
+}
+
+.intro-shine-letter {
+  background: linear-gradient(
+    120deg,
+    var(--color-text-primary) 0%,
+    var(--color-text-primary) 30%,
+    var(--color-accent-glow) 50%,
+    var(--color-text-primary) 70%,
+    var(--color-text-primary) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation:
+    intro-letter-in 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards,
+    intro-letter-shine 4s ease-in-out 0.6s infinite;
+}
+
+/* ── Tagline — fixed height ─────────────────────────────── */
+.intro-tagline {
+  font-size: clamp(0.65rem, 1.8vw, 0.8rem);
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  text-align: center;
+  height: clamp(0.85rem, 2vw, 1rem);
+  will-change: transform, opacity;
+}
+
+/* Decorative line */
+.intro-line {
+  width: 64px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-accent), transparent);
+  transform-origin: center;
+  will-change: transform;
+}
+
+/* Floating particles */
+.intro-particles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+@keyframes intro-particle-float {
+  0% {
+    transform: translateY(100vh) scale(0);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.4;
+    transform: translateY(90vh) scale(1);
+  }
+  90% {
+    opacity: 0.2;
+  }
+  100% {
+    transform: translateY(-10vh) scale(0.5);
+    opacity: 0;
+  }
+}
+
+.intro-particle {
+  position: absolute;
+  bottom: 0;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0;
+  animation: intro-particle-float linear infinite;
+  will-change: transform, opacity;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Tweak 7: App root crossfade (intro → content continuity)
+   ══════════════════════════════════════════════════════════ */
+.app-root {
+  opacity: 0;
+  transition: opacity 350ms ease 100ms;
+}
+
+.app-root.app-ready {
+  opacity: 1;
+}
+
+/* Skip crossfade if intro didn't play */
+.app-root.app-no-intro {
+  opacity: 1;
+  transition: none;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Tweak 5: Reduced motion — accessibility + pro quality
+   ══════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .intro-overlay,
+  .intro-overlay *,
+  .brand-logo-rotate,
+  .brand-shiny-text,
+  .intro-letter,
+  .intro-shine-letter,
+  .intro-particle,
+  .intro-gear-spin,
+  .intro-gear-flash,
+  .intro-merge-top,
+  .intro-merge-bottom {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  /* Show everything instantly */
+  .intro-letter,
+  .intro-gear-half {
+    opacity: 1 !important;
+    filter: none !important;
+    transform: none !important;
+  }
+
+  .intro-particle {
+    display: none;
+  }
+
+  .app-root {
+    opacity: 1 !important;
+    transition: none !important;
+  }
+}
+

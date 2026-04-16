@@ -49,6 +49,7 @@ ROLE_PERMISSIONS: dict[str, set[Permission]] = {
     "supervisor": {
         Permission.CREATE_TASK,
         Permission.UPDATE_TASK,
+        Permission.DELETE_TASK,
         Permission.ASSIGN_TASK,
         Permission.UPDATE_TASK_STATUS,
         Permission.CREATE_MACHINE,

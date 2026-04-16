@@ -87,7 +87,9 @@ export default function JobCreationModal() {
             fetchMachines();
             fetchAIProviderStatus();
             resetState();
+            document.body.classList.add('modal-open');
         }
+        return () => document.body.classList.remove('modal-open');
     }, [isJobCreationModalOpen, fetchAIProviderStatus]);
 
     const resetState = () => {
@@ -288,7 +290,7 @@ export default function JobCreationModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-bg-overlay px-4 py-8">
+        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) closeJobCreationModal(); }}>
             <div className="modal-shell flex max-h-[92vh] w-full max-w-[700px] flex-col overflow-hidden rounded-[30px] shadow-2xl">
                 {/* ── Header ─────────────────────────────── */}
                 <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border/70 px-6 py-5">

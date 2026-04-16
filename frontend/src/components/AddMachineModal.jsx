@@ -16,7 +16,11 @@ export default function AddMachineModal() {
     useEffect(() => {
         const h = (e) => { if (e.key === 'Escape' && !creatingMachine) closeModal(); };
         window.addEventListener('keydown', h);
-        return () => window.removeEventListener('keydown', h);
+        document.body.classList.add('modal-open');
+        return () => {
+            window.removeEventListener('keydown', h);
+            document.body.classList.remove('modal-open');
+        };
     }, [creatingMachine, closeModal]);
 
     const handleChange = (e) => { setFormData((c) => ({ ...c, [e.target.name]: e.target.value })); setError(''); };
@@ -32,7 +36,7 @@ export default function AddMachineModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8" onClick={closeModal}>
+        <div className="modal-overlay" onClick={closeModal}>
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}

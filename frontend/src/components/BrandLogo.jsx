@@ -11,7 +11,7 @@ function resolveSize(size) {
     return SIZE_MAP[size] || SIZE_MAP.md;
 }
 
-export function BrandIcon({ size = 'md', className = '' }) {
+export function BrandIcon({ size = 'md', className = '', animate = true }) {
     const pixelSize = resolveSize(size);
     const primary = '#103f52';
     const secondary = '#2f88a4';
@@ -24,10 +24,18 @@ export function BrandIcon({ size = 'md', className = '' }) {
             height={pixelSize}
             role="img"
             aria-label="MechTrackPulse logo"
-            className={className}
+            className={`${animate ? 'brand-logo-rotate' : ''} ${className}`}
+            style={{ willChange: animate ? 'transform' : undefined }}
         >
             <title>MechTrackPulse</title>
-            <g fill={primary}>
+            <defs>
+                {/* Subtle glow filter for the gear */}
+                <filter id="gear-glow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="2" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                </filter>
+            </defs>
+            <g fill={primary} filter="url(#gear-glow)">
                 {teeth.map((angle) => (
                     <rect
                         key={angle}
@@ -61,6 +69,14 @@ export function BrandIcon({ size = 'md', className = '' }) {
     );
 }
 
+export function BrandTitle({ title = 'MechTrackPulse', className = '' }) {
+    return (
+        <span className={`brand-shiny-text font-display leading-none text-text-primary ${className}`}>
+            {title}
+        </span>
+    );
+}
+
 export default function BrandLogo({
     size = 'md',
     title = 'MechTrackPulse',
@@ -70,19 +86,18 @@ export default function BrandLogo({
     subtitleClassName = '',
     iconClassName = '',
     stacked = false,
+    animate = true,
 }) {
     const pixelSize = resolveSize(size);
     const directionClass = stacked ? 'flex-col items-start' : 'items-center';
 
     return (
-        <div className={`inline-flex ${directionClass} gap-3 ${className}`}>
-            <BrandIcon size={pixelSize} className={`shrink-0 ${iconClassName}`} />
-            <div className="min-w-0">
-                <p className={`truncate font-display leading-none text-text-primary ${titleClassName}`}>
-                    {title}
-                </p>
+        <div className={`inline-flex ${directionClass} gap-3 max-w-full ${className}`}>
+            <BrandIcon size={pixelSize} className={`shrink-0 ${iconClassName}`} animate={animate} />
+            <div className="min-w-0 max-w-full overflow-hidden">
+                <BrandTitle title={title} className={titleClassName} />
                 {subtitle ? (
-                    <p className={`mt-1 truncate text-[11px] uppercase tracking-[0.18em] text-text-muted ${subtitleClassName}`}>
+                    <p className={`mt-1 text-[10px] sm:text-[11px] uppercase tracking-[0.14em] sm:tracking-[0.18em] text-text-muted break-words leading-tight ${subtitleClassName}`}>
                         {subtitle}
                     </p>
                 ) : null}
@@ -90,3 +105,4 @@ export default function BrandLogo({
         </div>
     );
 }
+

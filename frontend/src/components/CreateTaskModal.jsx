@@ -28,7 +28,11 @@ export default function CreateTaskModal() {
     useEffect(() => {
         const h = (e) => { if (e.key === 'Escape' && !creatingTask) closeModal(); };
         window.addEventListener('keydown', h);
-        return () => window.removeEventListener('keydown', h);
+        document.body.classList.add('modal-open');
+        return () => {
+            window.removeEventListener('keydown', h);
+            document.body.classList.remove('modal-open');
+        };
     }, [creatingTask, closeModal]);
 
     const handleChange = (e) => { setFormData((c) => ({ ...c, [e.target.name]: e.target.value })); setError(''); };
@@ -83,7 +87,7 @@ export default function CreateTaskModal() {
     };
 
     return (
-        <div className="absolute inset-0 z-[70] flex items-center justify-center bg-bg-overlay px-4 py-8" onClick={closeModal}>
+        <div className="modal-overlay" onClick={closeModal}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }} className="modal-shell w-full max-w-lg rounded-[30px] p-7 shadow-2xl sm:p-8"
                 onClick={(event) => event.stopPropagation()}>
