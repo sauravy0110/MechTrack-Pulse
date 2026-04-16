@@ -71,7 +71,7 @@ STANDARD_OPERATIONS = [
 ]
 
 STANDARD_THREADS = {6, 8, 10, 12, 14, 16, 20, 24}
-DEFAULT_OPENROUTER_VISION_MODEL = "qwen/qwen2.5-vl-32b-instruct:free"
+DEFAULT_OPENROUTER_VISION_MODEL = "openrouter/free"
 
 VISION_OCR_SYSTEM_PROMPT = """
 You are an expert mechanical engineering drawing interpreter.

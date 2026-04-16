@@ -18,6 +18,7 @@ from app.core.config import get_settings
 
 logger = logging.getLogger("app.openrouter")
 settings = get_settings()
+FREE_MODELS_ROUTER = "openrouter/free"
 
 
 def _clean(value: str | None) -> str | None:
@@ -96,11 +97,16 @@ def _send_chat_completion(
     temperature: float = 0.2,
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
+    fallback_models: list[str] | None = None,
 ) -> dict[str, Any] | None:
     if not openrouter_enabled():
         return None
 
     candidate_models = [model]
+    for fallback in fallback_models or []:
+        cleaned_fallback = _clean(fallback)
+        if cleaned_fallback and cleaned_fallback not in candidate_models:
+            candidate_models.append(cleaned_fallback)
     fallback_model = _clean(settings.OPENROUTER_MODEL_REASONING)
     if fallback_model and fallback_model not in candidate_models:
         candidate_models.append(fallback_model)
@@ -133,7 +139,7 @@ def _send_chat_completion(
                     exc.response.status_code,
                     body,
                 )
-                if exc.response.status_code in {429, 500, 502, 503, 504}:
+                if exc.response.status_code in {404, 429, 500, 502, 503, 504}:
                     continue
                 break
             except Exception as exc:  # noqa: BLE001
@@ -196,6 +202,7 @@ def _chat_json_with_image(
         ],
         temperature=temperature,
         max_tokens=max_tokens,
+        fallback_models=[FREE_MODELS_ROUTER],
     )
     if not response:
         return None
