@@ -7,6 +7,7 @@ Run with: uvicorn app.main:app --reload
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -35,6 +36,31 @@ if settings.ENVIRONMENT != "testing":
     setup_tracing(app=None, engine=engine) # App instrumented below after factory creation
 
 
+# ── Startup Migrations ───────────────────────────────────────
+# Safely add columns that create_all() can't add to existing tables.
+_COLUMN_MIGRATIONS = [
+    # (table, column, SQL type)
+    ("tasks", "deleted_at", "TIMESTAMPTZ"),
+]
+
+
+def _run_column_migrations(bind):
+    """Add missing columns to existing tables (idempotent)."""
+    with bind.connect() as conn:
+        for table, column, col_type in _COLUMN_MIGRATIONS:
+            try:
+                conn.execute(
+                    text(
+                        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS "
+                        f"{column} {col_type}"
+                    )
+                )
+                conn.commit()
+            except Exception as exc:
+                print(f"⚠️  Migration {table}.{column}: {exc}")
+                conn.rollback()
+
+
 # ── Lifecycle ────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,6 +74,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"⚠️  {settings.APP_NAME} — DB not available: {e}")
         print("   Server will start, but DB operations will fail.")
+
+    # Run column migrations for existing tables
+    try:
+        _run_column_migrations(engine)
+        print(f"✅ {settings.APP_NAME} — Column migrations applied")
+    except Exception as e:
+        print(f"⚠️  Column migrations failed: {e}")
 
     # Seed platform admin
     try:
