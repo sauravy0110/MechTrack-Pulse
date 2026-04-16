@@ -16,6 +16,7 @@ from app.models.machine import Machine
 from app.models.subscription import Subscription
 from app.services.task_queue import enqueue_task, remove_from_queue
 from app.services import operator_service
+from app.services.mes_service import CNC_EXECUTION_STATUSES, is_cnc_job
 
 
 # Valid status transitions
@@ -25,6 +26,7 @@ VALID_TRANSITIONS = {
     "in_progress": ["completed", "delayed", "paused"],
     "paused": ["in_progress", "completed", "delayed"],
     "delayed": ["in_progress", "completed", "paused"],
+    "dispatched": ["completed"],
     "completed": [],  # terminal state
 }
 
@@ -243,6 +245,13 @@ def update_task_status(
     if not task:
         return None, "Task not found"
 
+    if is_cnc_job(task):
+        allowed_mes_manual = task.status == "dispatched" and new_status == "completed"
+        if not task.is_locked and new_status in CNC_EXECUTION_STATUSES:
+            return None, "CNC jobs must be locked before execution can begin"
+        if not allowed_mes_manual:
+            return None, "Use the MES workflow controls for CNC job stage changes"
+
     # ── Permission Check ────────────────────────────────
     # Import here to avoid circular imports
     from app.models.user import User
@@ -343,7 +352,11 @@ def assign_task(
     task.assigned_to = assignee_id
 
     # Update status if it was idle/queued
-    if task.status in ["idle", "queued"]:
+    if is_cnc_job(task):
+        if task.status not in ["completed", "dispatched"]:
+            task.status = "assigned"
+            task.timer_started_at = None
+    elif task.status in ["idle", "queued"]:
         active_count = db.query(Task).filter(
             Task.assigned_to == assignee_id,
             Task.status == "in_progress"

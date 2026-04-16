@@ -7,11 +7,16 @@ import TaskWorkspacePanel from './TaskWorkspacePanel';
 
 const MotionDiv = motion.div;
 
+function isCNCJob(task) {
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+}
+
 const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const tasks = useAppStore((state) => state.tasks);
     const machines = useAppStore((state) => state.machines);
     const updateTaskStatus = useAppStore((state) => state.updateTaskStatus);
     const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const addAlert = useAppStore((state) => state.addAlert);
     const taskFilter = useAppStore((state) => state.taskFilter);
     const taskSort = useAppStore((state) => state.taskSort);
@@ -47,6 +52,14 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         setExpandedTaskId((current) => current === task.id ? '' : task.id);
     };
 
+    const openTaskCreation = () => {
+        if (userRole === 'supervisor') {
+            openJobCreationModal();
+            return;
+        }
+        openCreateTaskModal();
+    };
+
     const wrapperClass = embedded
         ? 'px-6 py-6 pb-8 space-y-5'
         : 'flex-1 overflow-y-auto p-4 space-y-4 pb-32';
@@ -59,8 +72,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                     <p className="text-xs text-text-muted mt-1 font-mono uppercase tracking-widest">{visibleTasks.length} visible · {taskFilter} · {taskSort}</p>
                 </div>
                 {canCreateTask && (
-                    <button type="button" onClick={() => openCreateTaskModal()}
-                        className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ Create Task</button>
+                    <button type="button" onClick={openTaskCreation}
+                        className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
                 )}
             </header>
 
@@ -114,7 +127,11 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
-                                {canControlWorkflow && canStart(task.status) ? (
+                                {isCNCJob(task) ? (
+                                    <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
+                                        This CNC job follows the MES workflow. Open the workspace to continue with material validation, setup, QC, rework, dispatch, or completion.
+                                    </div>
+                                ) : canControlWorkflow && canStart(task.status) ? (
                                     <button onClick={() => handleStatusUpdate(task.id, 'in_progress')}
                                         className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2">
                                         <Play size={16} fill="currentColor" /> {getPrimaryActionLabel(task.status)}
@@ -181,8 +198,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                             {tasks.length === 0 ? 'Dispatch a task to start work.' : 'Change the filter or sort to see different tasks.'}
                         </p>
                         {canCreateTask && (
-                            <button type="button" onClick={() => openCreateTaskModal()}
-                                className="mt-5 btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ Create Task</button>
+                            <button type="button" onClick={openTaskCreation}
+                                className="mt-5 btn-primary rounded-xl px-4 py-3 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
                         )}
                     </MotionDiv>
                 )}

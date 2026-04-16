@@ -15,6 +15,14 @@ from app.models.task import Task
 from app.models.task_log import TaskLog
 from app.models.task_image import TaskImage
 from app.models.machine import Machine
+from app.models.client import Client
+from app.models.job_version import JobVersion
+from app.models.assignment import Assignment
+from app.models.production_log import ProductionLog
+from app.models.qc_report import QCReport
+from app.models.ai_report import AIReport
+from app.models.rework_log import ReworkLog
+from app.models.dispatch_record import DispatchRecord
 from app.models.operator_score import OperatorScore
 from app.models.ai_insight import AIInsight
 from app.models.report import Report
@@ -31,6 +39,14 @@ __all__ = [
     "TaskLog",
     "TaskImage",
     "Machine",
+    "Client",
+    "JobVersion",
+    "Assignment",
+    "ProductionLog",
+    "QCReport",
+    "AIReport",
+    "ReworkLog",
+    "DispatchRecord",
     "OperatorScore",
     "AIInsight",
     "Report",

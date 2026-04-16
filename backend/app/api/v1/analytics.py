@@ -20,6 +20,7 @@ from app.models.user import User
 from app.models.machine import Machine
 from app.models.operator_score import OperatorScore
 from app.models.ai_insight import AIInsight
+from app.services.mes_service import MES_ACTIVE_STATUSES
 
 router = APIRouter()
 
@@ -42,6 +43,9 @@ def get_dashboard(
     ).count()
     delayed_tasks = db.query(Task).filter(
         Task.company_id == company_id, Task.status == "delayed"
+    ).count()
+    active_tasks = db.query(Task).filter(
+        Task.company_id == company_id, Task.status.in_(MES_ACTIVE_STATUSES)
     ).count()
     in_progress_tasks = db.query(Task).filter(
         Task.company_id == company_id, Task.status == "in_progress"
@@ -84,6 +88,7 @@ def get_dashboard(
             "total": total_tasks,
             "completed": completed_tasks,
             "delayed": delayed_tasks,
+            "active": active_tasks,
             "in_progress": in_progress_tasks,
             "idle": idle_tasks,
             "completion_rate": round(completion_rate, 1),
@@ -130,7 +135,7 @@ def get_operator_leaderboard(
         # Count active tasks
         active_tasks = db.query(Task).filter(
             Task.assigned_to == op.id,
-            Task.status.in_(["idle", "in_progress"]),
+            Task.status.in_(MES_ACTIVE_STATUSES),
         ).count()
 
         leaderboard.append({
@@ -161,7 +166,7 @@ def get_task_analytics(
 
     # Status breakdown
     status_counts = {}
-    for status in ["idle", "in_progress", "completed", "delayed"]:
+    for status in ["idle", "created", "planned", "ready", "assigned", "setup", "in_progress", "qc_check", "final_inspection", "dispatched", "completed", "delayed"]:
         count = db.query(Task).filter(
             Task.company_id == company_id,
             Task.status == status,
@@ -196,7 +201,7 @@ def get_task_analytics(
     high_risk = db.query(Task).filter(
         Task.company_id == company_id,
         Task.delay_probability > 0.5,
-        Task.status.in_(["idle", "in_progress"]),
+        Task.status.in_(MES_ACTIVE_STATUSES),
     ).count()
 
     return {

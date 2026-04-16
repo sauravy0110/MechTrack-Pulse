@@ -8,8 +8,9 @@
  *   4. Verify & Lock
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import useAppStore from '../stores/appStore';
+import api from '../api/client';
 
 const STEPS = [
     { id: 1, label: 'Client', icon: '👤' },
@@ -24,10 +25,10 @@ const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'];
 export default function JobCreationModal() {
     const {
         isJobCreationModalOpen, closeJobCreationModal,
-        users, fetchUsers, machines, fetchMachines,
-        createCNCJob, createUser,
+        clients, fetchClients, machines, fetchMachines,
+        createCNCJob, createClient,
         extractJobSpecs, updateJobSpec, confirmAllSpecs, lockJob,
-        jobSpecs, fetchJobSpecs,
+        fetchJobSpecs,
         creatingTask, lockingJob,
         addAlert,
     } = useAppStore();
@@ -39,7 +40,14 @@ export default function JobCreationModal() {
     // Step 1: Client
     const [clientMode, setClientMode] = useState('existing'); // 'existing' | 'new'
     const [selectedClientId, setSelectedClientId] = useState('');
-    const [newClient, setNewClient] = useState({ full_name: '', email: '', phone: '' });
+    const [newClient, setNewClient] = useState({
+        company_name: '',
+        contact_person: '',
+        email: '',
+        phone: '',
+        address: '',
+        send_email: true,
+    });
     const [createdClientCreds, setCreatedClientCreds] = useState(null);
 
     // Step 2: Part details
@@ -52,6 +60,9 @@ export default function JobCreationModal() {
 
     // Step 3: AI specs
     const [drawingContext, setDrawingContext] = useState('');
+    const [drawingFile, setDrawingFile] = useState(null);
+    const [drawingUploadedUrl, setDrawingUploadedUrl] = useState('');
+    const [drawingUploading, setDrawingUploading] = useState(false);
     const [extracting, setExtracting] = useState(false);
     const [specs, setSpecs] = useState([]);
     const [editedSpecs, setEditedSpecs] = useState({}); // { [specId]: humanValue }
@@ -60,11 +71,9 @@ export default function JobCreationModal() {
     // Step 4: Lock
     const [locking, setLocking] = useState(false);
 
-    const clients = users.filter((u) => u.role === 'client' && u.is_active !== false);
-
     useEffect(() => {
         if (isJobCreationModalOpen) {
-            fetchUsers();
+            fetchClients();
             fetchMachines();
             resetState();
         }
@@ -72,10 +81,17 @@ export default function JobCreationModal() {
 
     const resetState = () => {
         setStep(1); setError(''); setTaskId(null);
-        setClientMode('existing'); setSelectedClientId(''); setNewClient({ full_name: '', email: '', phone: '' });
+        setClientMode('existing'); setSelectedClientId(''); setNewClient({
+            company_name: '',
+            contact_person: '',
+            email: '',
+            phone: '',
+            address: '',
+            send_email: true,
+        });
         setCreatedClientCreds(null);
         setPartName(''); setMaterialType(''); setMaterialBatch(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
-        setDrawingContext(''); setSpecs([]); setEditedSpecs({}); setLocking(false);
+        setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setSpecs([]); setEditedSpecs({}); setLocking(false);
     };
 
     if (!isJobCreationModalOpen) return null;
@@ -90,19 +106,22 @@ export default function JobCreationModal() {
                 return;
             }
             if (clientMode === 'new') {
-                if (!newClient.full_name.trim()) { setError('Client name is required.'); return; }
+                if (!newClient.company_name.trim()) { setError('Client company name is required.'); return; }
+                if (!newClient.contact_person.trim()) { setError('Client contact person is required.'); return; }
                 if (!newClient.email.trim()) { setError('Client email is required.'); return; }
                 // Create the new client
                 try {
-                    const creds = await createUser({
-                        full_name: newClient.full_name,
+                    const creds = await createClient({
+                        company_name: newClient.company_name,
+                        contact_person: newClient.contact_person,
                         email: newClient.email,
                         phone: newClient.phone || null,
-                        role: 'client',
+                        address: newClient.address || null,
+                        send_email: newClient.send_email,
                     });
                     setCreatedClientCreds(creds);
                     setSelectedClientId(creds.id);
-                    addAlert(`Client "${creds.full_name}" created. Credentials ready.`, 'success');
+                    addAlert(`Client "${creds.company_name}" created. Credentials ready.`, 'success');
                 } catch (e) {
                     setError(e.message);
                     return;
@@ -142,8 +161,33 @@ export default function JobCreationModal() {
         setStep(target);
     };
 
+    const handleDrawingUpload = async (file) => {
+        if (!file || !taskId) return;
+        setDrawingUploading(true);
+        setError('');
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            const { data } = await api.post(`/uploads/tasks/${taskId}/media`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            const mediaUrl = data.media_url || data.image_url || '';
+            await api.patch(`/tasks/${taskId}/cnc-fields`, { drawing_url: mediaUrl });
+            setDrawingUploadedUrl(mediaUrl);
+            addAlert('Drawing uploaded and linked to the job.', 'success');
+        } catch (e) {
+            setError(e.response?.data?.detail || e.message || 'Unable to upload the drawing.');
+        } finally {
+            setDrawingUploading(false);
+        }
+    };
+
     const handleExtract = async () => {
         if (!taskId) return;
+        if (!drawingUploadedUrl && !drawingContext.trim()) {
+            setError('Upload a drawing image or paste drawing details before AI extraction.');
+            return;
+        }
         setExtracting(true);
         setError('');
         try {
@@ -308,6 +352,10 @@ export default function JobCreationModal() {
                     {step === 3 && (
                         <StepAISpecs
                             drawingContext={drawingContext} setDrawingContext={setDrawingContext}
+                            drawingFile={drawingFile} setDrawingFile={setDrawingFile}
+                            drawingUploadedUrl={drawingUploadedUrl}
+                            drawingUploading={drawingUploading}
+                            onDrawingUpload={handleDrawingUpload}
                             specs={specs} onExtract={handleExtract} extracting={extracting}
                             onSpecEdit={handleSpecEdit}
                             partName={partName}
@@ -467,11 +515,13 @@ function StepClient({ clientMode, setClientMode, selectedClientId, setSelectedCl
                                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                                         fontSize: '14px', fontWeight: 700, color: 'white', flexShrink: 0,
                                     }}>
-                                        {client.full_name?.[0]?.toUpperCase() || '?'}
+                                        {client.company_name?.[0]?.toUpperCase() || client.contact_person?.[0]?.toUpperCase() || '?'}
                                     </div>
                                     <div>
-                                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{client.full_name}</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{client.email}</div>
+                                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{client.company_name}</div>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                            {client.contact_person} • {client.email}
+                                        </div>
                                     </div>
                                     {selectedClientId === client.id && (
                                         <span style={{ marginLeft: 'auto', color: '#34D399', fontSize: '16px' }}>✓</span>
@@ -494,17 +544,45 @@ function StepClient({ clientMode, setClientMode, selectedClientId, setSelectedCl
                                 ✅ Client created! Share these credentials:
                             </div>
                             <div style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
-                                <div>Email: {createdClientCreds.email}</div>
+                                <div>Client ID: {createdClientCreds.client_id}</div>
+                                <div>Username: {createdClientCreds.username}</div>
                                 <div>Temp Password: <strong>{createdClientCreds.temp_password}</strong></div>
                             </div>
                             <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '6px' }}>
                                 Client must change password on first login.
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => navigator.clipboard.writeText(`Client ID: ${createdClientCreds.client_id}\nUsername: ${createdClientCreds.username}\nTemp Password: ${createdClientCreds.temp_password}`)}
+                                style={{
+                                    marginTop: '10px',
+                                    padding: '8px 12px',
+                                    borderRadius: '8px',
+                                    border: '1px solid rgba(52,211,153,0.3)',
+                                    background: 'rgba(52,211,153,0.15)',
+                                    color: '#34D399',
+                                    fontSize: '11px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                }}
+                            >
+                                Copy Credentials
+                            </button>
                         </div>
                     )}
-                    <FormField label="Full Name *" value={newClient.full_name} onChange={(v) => setNewClient((p) => ({ ...p, full_name: v }))} placeholder="Company or contact name" />
+                    <FormField label="Company Name *" value={newClient.company_name} onChange={(v) => setNewClient((p) => ({ ...p, company_name: v }))} placeholder="Acme Motion Pvt Ltd" />
+                    <FormField label="Contact Person *" value={newClient.contact_person} onChange={(v) => setNewClient((p) => ({ ...p, contact_person: v }))} placeholder="Riya Shah" />
                     <FormField label="Email *" type="email" value={newClient.email} onChange={(v) => setNewClient((p) => ({ ...p, email: v }))} placeholder="client@company.com" />
                     <FormField label="Phone" value={newClient.phone} onChange={(v) => setNewClient((p) => ({ ...p, phone: v }))} placeholder="+91 9876543210" />
+                    <FormField label="Address" value={newClient.address} onChange={(v) => setNewClient((p) => ({ ...p, address: v }))} placeholder="Plant / billing address" multiline />
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
+                        <input
+                            type="checkbox"
+                            checked={newClient.send_email}
+                            onChange={(e) => setNewClient((p) => ({ ...p, send_email: e.target.checked }))}
+                        />
+                        Email credentials automatically after creation
+                    </label>
                 </div>
             )}
         </div>
@@ -547,7 +625,20 @@ function StepPartDetails({ partName, setPartName, materialType, setMaterialType,
     );
 }
 
-function StepAISpecs({ drawingContext, setDrawingContext, specs, onExtract, extracting, onSpecEdit, partName }) {
+function StepAISpecs({
+    drawingContext,
+    setDrawingContext,
+    drawingFile,
+    setDrawingFile,
+    drawingUploadedUrl,
+    drawingUploading,
+    onDrawingUpload,
+    specs,
+    onExtract,
+    extracting,
+    onSpecEdit,
+    partName,
+}) {
     const confidenceColor = (c) => {
         if (!c) return '#8B8FA8';
         if (c >= 0.85) return '#34D399';
@@ -557,10 +648,54 @@ function StepAISpecs({ drawingContext, setDrawingContext, specs, onExtract, extr
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{
+                padding: '14px',
+                borderRadius: '10px',
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+            }}>
+                <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    DRAWING UPLOAD *
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                    <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0] || null;
+                            setDrawingFile(file);
+                        }}
+                        className="input-glass"
+                        style={{ flex: 1, minWidth: '220px' }}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => drawingFile && onDrawingUpload(drawingFile)}
+                        disabled={!drawingFile || drawingUploading}
+                        style={{
+                            padding: '10px 16px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: 700,
+                            border: '1px solid rgba(99,102,241,0.3)',
+                            background: 'rgba(99,102,241,0.15)',
+                            color: '#A5B4FC',
+                            cursor: !drawingFile || drawingUploading ? 'not-allowed' : 'pointer',
+                            opacity: !drawingFile || drawingUploading ? 0.6 : 1,
+                        }}
+                    >
+                        {drawingUploading ? '⟳ Uploading…' : 'Upload Drawing'}
+                    </button>
+                </div>
+                <div style={{ fontSize: '10px', color: drawingUploadedUrl ? '#34D399' : 'var(--text-muted)', marginTop: '8px' }}>
+                    {drawingUploadedUrl ? 'Drawing linked to this job.' : 'Upload a drawing image, or provide detailed OCR/spec text below.'}
+                </div>
+            </div>
+
             {/* Drawing context input */}
             <div>
                 <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>
-                    DRAWING DESCRIPTION / OCR TEXT <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(Optional — AI extracts better with this)</span>
+                    DRAWING DESCRIPTION / OCR TEXT <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>(Optional but recommended)</span>
                 </label>
                 <textarea
                     value={drawingContext}

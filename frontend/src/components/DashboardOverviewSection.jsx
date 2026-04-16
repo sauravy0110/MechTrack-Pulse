@@ -66,6 +66,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
     const insights = useAppStore((state) => state.insights);
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
     const openCreateTaskModal = useAppStore((state) => state.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
     const openAddMachineModal = useAppStore((state) => state.openAddMachineModal);
     const openAddUserModal = useAppStore((state) => state.openAddUserModal);
     const openGlobalAIModal = useAppStore((state) => state.openGlobalAIModal);
@@ -160,7 +161,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
         if (user?.role === 'supervisor') {
             return [
                 { label: 'Control Operations', description: 'Focus on machine activity and live task progress.', icon: Factory, onClick: () => onSectionSelect('operations'), tone: 'btn-primary text-white' },
-                { label: 'Create Task', description: 'Dispatch a new task with AI-generated instructions.', icon: ClipboardList, onClick: () => openCreateTaskModal() },
+                { label: 'Create Job', description: 'Run the locked CNC job flow with client, drawing, AI verification, and lock.', icon: ClipboardList, onClick: () => openJobCreationModal() },
                 { label: 'Manage Team', description: 'See workloads and shift assignment decisions into one place.', icon: Users, onClick: () => onSectionSelect('team') },
                 { label: 'Ask AI', description: 'Get smart assignment, delay, and bottleneck suggestions.', icon: Brain, onClick: openGlobalAIModal },
             ];
@@ -179,7 +180,7 @@ export default function DashboardOverviewSection({ onSectionSelect }) {
             { label: 'Ask AI', description: 'Get a readable progress summary or explanation instantly.', icon: Brain, onClick: openGlobalAIModal },
             { label: 'View Profile', description: 'Check account and company access in a calmer workspace.', icon: ShieldCheck, onClick: () => onSectionSelect('profile') },
         ];
-    }, [onSectionSelect, openAddUserModal, openCreateTaskModal, openGlobalAIModal, user?.role]);
+    }, [onSectionSelect, openAddUserModal, openCreateTaskModal, openGlobalAIModal, openJobCreationModal, user?.role]);
 
     return (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.95fr)]">

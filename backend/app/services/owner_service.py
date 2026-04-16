@@ -15,6 +15,7 @@ from app.models.machine import Machine
 from app.models.user import User
 from app.models.subscription import Subscription
 from app.services.audit_service import record_audit_log
+from app.services.mes_service import MES_ACTIVE_STATUSES
 from app.schemas.owner import (
     CompanyProfileResponse,
     KPIDashboardResponse,
@@ -35,7 +36,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
 
-ACTIVE_TASK_STATUSES = ("idle", "queued", "in_progress", "paused", "delayed")
+ACTIVE_TASK_STATUSES = MES_ACTIVE_STATUSES
 
 
 def _usage_metric(used: int, limit: int) -> UsageMetricResponse:

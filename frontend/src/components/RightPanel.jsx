@@ -26,6 +26,9 @@ const WORKFLOW_ACTIONS = {
 };
 
 function formatStatus(status) { return status.replace('_', ' '); }
+function isCNCJob(task) {
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+}
 
 const RightPanel = memo(function RightPanel({ embedded = false }) {
     const selectedMachine = useAppStore((s) => s.selectedMachine);
@@ -44,6 +47,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const assignTask = useAppStore((s) => s.assignTask);
     const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
     const openCreateTaskModal = useAppStore((s) => s.openCreateTaskModal);
+    const openJobCreationModal = useAppStore((s) => s.openJobCreationModal);
     const userRole = useAuthStore((s) => s.user?.role);
 
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
@@ -104,6 +108,14 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
         finally { setStatusUpdating(''); }
     };
 
+    const openTaskCreation = () => {
+        if (userRole === 'supervisor') {
+            openJobCreationModal();
+            return;
+        }
+        openCreateTaskModal(selectedMachine?.id || '');
+    };
+
     if (!selectedMachine && userRole === 'owner') {
         return <OwnerBusinessPanel embedded={embedded} />;
     }
@@ -122,9 +134,9 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                     </div>
                     <div className="flex items-center gap-2">
                         {canCreateTask && (
-                            <button type="button" onClick={() => openCreateTaskModal(selectedMachine.id)}
+                            <button type="button" onClick={openTaskCreation}
                                 className="btn-primary rounded-full px-3 py-1 text-[11px] font-semibold inline-flex items-center gap-1">
-                                <Plus size={10} /> Task
+                                <Plus size={10} /> {userRole === 'supervisor' ? 'Job' : 'Task'}
                             </button>
                         )}
                         <button onClick={clearSelection} className="text-text-muted hover:text-text-primary transition-colors cursor-pointer p-1 rounded-full hover:bg-bg-hover">
@@ -190,8 +202,8 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                 <div className="rounded-xl border border-dashed border-border glass-card px-4 py-6 text-center">
                                     <p className="text-xs text-text-muted">No tasks assigned yet.</p>
                                     {canCreateTask && (
-                                        <button type="button" onClick={() => openCreateTaskModal(selectedMachine.id)}
-                                            className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ Create Task</button>
+                                        <button type="button" onClick={openTaskCreation}
+                                            className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
                                     )}
                                 </div>
                             )}
@@ -254,17 +266,25 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                             {canControlWorkflow && (
                                 <div className="mt-4 space-y-2">
                                     <p className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Workflow</p>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {(WORKFLOW_ACTIONS[selectedTask.status] || []).map((action) => (
-                                            <button key={action.status} type="button"
-                                                onClick={() => handleStatusChange(selectedTask.id, action.status)}
-                                                disabled={statusUpdating === selectedTask.id}
-                                                className={`${action.tone} rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${action.status === 'completed' ? 'col-span-2' : ''}`}>
-                                                {statusUpdating === selectedTask.id ? 'Updating...' : action.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {statusError && <p className="text-[10px] text-danger">{statusError}</p>}
+                                    {isCNCJob(selectedTask) ? (
+                                        <div className="rounded-xl border border-accent/20 bg-accent/5 px-3 py-3 text-[11px] text-text-secondary">
+                                            CNC jobs now move through the MES workspace below. Use material validation, setup, QC, rework, dispatch, and completion controls there instead of the generic task workflow.
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {(WORKFLOW_ACTIONS[selectedTask.status] || []).map((action) => (
+                                                    <button key={action.status} type="button"
+                                                        onClick={() => handleStatusChange(selectedTask.id, action.status)}
+                                                        disabled={statusUpdating === selectedTask.id}
+                                                        className={`${action.tone} rounded-lg px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${action.status === 'completed' ? 'col-span-2' : ''}`}>
+                                                        {statusUpdating === selectedTask.id ? 'Updating...' : action.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {statusError && <p className="text-[10px] text-danger">{statusError}</p>}
+                                        </>
+                                    )}
                                 </div>
                             )}
 
@@ -284,9 +304,9 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                 <div className="flex items-center justify-between gap-3">
                     <h2 className="text-xs font-bold text-text-secondary uppercase tracking-widest">Overview</h2>
                     {canCreateTask && (
-                        <button type="button" onClick={() => openCreateTaskModal()}
+                        <button type="button" onClick={() => userRole === 'supervisor' ? openJobCreationModal() : openCreateTaskModal()}
                             className="btn-primary rounded-full px-3 py-1.5 text-[11px] font-semibold inline-flex items-center gap-1">
-                            <Plus size={10} /> Task
+                            <Plus size={10} /> {userRole === 'supervisor' ? 'Job' : 'Task'}
                         </button>
                     )}
                 </div>
@@ -307,7 +327,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                         {[
                             { label: 'Tasks', value: dashboard.tasks?.total, color: 'text-text-primary' },
                             { label: 'Done', value: dashboard.tasks?.completed, color: 'text-success' },
-                            { label: 'Active', value: dashboard.tasks?.in_progress, color: 'text-warning' },
+                            { label: 'Active', value: dashboard.tasks?.active ?? dashboard.tasks?.in_progress, color: 'text-warning' },
                             { label: 'Delayed', value: dashboard.tasks?.delayed, color: 'text-danger' },
                             { label: 'Machines', value: dashboard.machines?.total, color: 'text-accent' },
                             { label: 'Operators', value: dashboard.users?.operators, color: 'text-text-primary' },
@@ -345,8 +365,8 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                             <div className="rounded-xl border border-dashed border-border glass-card px-4 py-6 text-center">
                                 <p className="text-xs text-text-muted">No tasks match the current filter.</p>
                                 {canCreateTask && (
-                                    <button type="button" onClick={() => openCreateTaskModal()}
-                                        className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ Create Task</button>
+                                    <button type="button" onClick={() => userRole === 'supervisor' ? openJobCreationModal() : openCreateTaskModal()}
+                                        className="mt-3 btn-primary rounded-xl px-4 py-2.5 text-xs font-semibold">+ {userRole === 'supervisor' ? 'Create Job' : 'Create Task'}</button>
                                 )}
                             </div>
                         )}

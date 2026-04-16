@@ -24,6 +24,7 @@ from app.models.job_process import JobProcess
 from app.models.task import Task
 from app.models.user import User
 from app.services.cnc_ai_service import suggest_process_plan, validate_process_plan
+from app.services.mes_service import build_process_snapshot, create_job_version, has_locked_process_plan
 
 router = APIRouter()
 
@@ -123,8 +124,10 @@ def ai_suggest_process(
     """
     task = _get_scoped_task(db, task_id, current_user.company_id)
 
-    if task.is_locked:
-        raise HTTPException(status_code=400, detail="Job is locked — process plan cannot be changed")
+    if not task.is_locked:
+        raise HTTPException(status_code=400, detail="Lock and verify job specs before planning the process")
+    if has_locked_process_plan(db, current_user.company_id, task_id):
+        raise HTTPException(status_code=400, detail="Process plan is locked — use rework flow to reopen it")
 
     # Remove previous AI-suggested ops (keep manual ones)
     db.query(JobProcess).filter(
@@ -205,8 +208,10 @@ def add_operation(
     """Manually add an operation to the process plan."""
     task = _get_scoped_task(db, task_id, current_user.company_id)
 
-    if task.is_locked:
-        raise HTTPException(status_code=400, detail="Job is locked — cannot add operations")
+    if not task.is_locked:
+        raise HTTPException(status_code=400, detail="Lock and verify job specs before planning the process")
+    if has_locked_process_plan(db, current_user.company_id, task_id):
+        raise HTTPException(status_code=400, detail="Process plan is locked — cannot add operations")
 
     machine_id = None
     if request.machine_id:
@@ -252,8 +257,8 @@ def update_operation(
         raise HTTPException(status_code=404, detail="Operation not found")
 
     task = db.query(Task).filter(Task.id == op.task_id).first()
-    if task and task.is_locked:
-        raise HTTPException(status_code=400, detail="Job is locked — cannot edit operations")
+    if task and has_locked_process_plan(db, current_user.company_id, op.task_id):
+        raise HTTPException(status_code=400, detail="Process plan is locked — cannot edit operations")
 
     if request.operation_name is not None:
         op.operation_name = request.operation_name
@@ -301,8 +306,8 @@ def delete_operation(
         raise HTTPException(status_code=404, detail="Operation not found")
 
     task = db.query(Task).filter(Task.id == op.task_id).first()
-    if task and task.is_locked:
-        raise HTTPException(status_code=400, detail="Job is locked — cannot delete operations")
+    if task and has_locked_process_plan(db, current_user.company_id, op.task_id):
+        raise HTTPException(status_code=400, detail="Process plan is locked — cannot delete operations")
 
     db.delete(op)
     db.commit()
@@ -322,6 +327,8 @@ def lock_process_plan(
     Job status advances to 'planned'.
     """
     task = _get_scoped_task(db, task_id, current_user.company_id)
+    if not task.is_locked:
+        raise HTTPException(status_code=400, detail="Job specs must be locked before locking the process plan")
 
     ops = db.query(JobProcess).filter(
         JobProcess.task_id == task_id,
@@ -335,8 +342,19 @@ def lock_process_plan(
         op.is_locked = True
 
     # Advance job status
-    if task.status == "created":
-        task.status = "planned"
+    task.status = "planned"
+
+    create_job_version(
+        db,
+        company_id=current_user.company_id,
+        task_id=task_id,
+        created_by=current_user.id,
+        version_type="process_lock",
+        snapshot={
+            "status": task.status,
+            "operations": build_process_snapshot(db, current_user.company_id, task_id),
+        },
+    )
 
     db.commit()
 
@@ -359,10 +377,8 @@ def reorder_operations(
 ):
     """Reorder operations by providing the list of IDs in desired sequence."""
     task = _get_scoped_task(db, task_id, current_user.company_id)
-
-    if task.is_locked:
-        raise HTTPException(status_code=400, detail="Job is locked — cannot reorder operations")
-
+    if has_locked_process_plan(db, current_user.company_id, task.id):
+        raise HTTPException(status_code=400, detail="Process plan is locked — cannot reorder operations")
     ops = db.query(JobProcess).filter(
         JobProcess.task_id == task_id,
         JobProcess.company_id == current_user.company_id,

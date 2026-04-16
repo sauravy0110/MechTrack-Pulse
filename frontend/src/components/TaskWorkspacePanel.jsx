@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import api from '../api/client';
 import useAppStore from '../stores/appStore';
+import MESStageWorkspace from './MESStageWorkspace';
 
 function formatDateTime(value) {
     if (!value) return 'Not available';
@@ -60,6 +61,7 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
     const [assistant, setAssistant] = useState(null);
     const [clientSummary, setClientSummary] = useState(null);
     const [supervisorIntel, setSupervisorIntel] = useState(null);
+    const [mesSummary, setMesSummary] = useState(null);
     const [loading, setLoading] = useState(false);
     const [note, setNote] = useState('');
     const [savingNote, setSavingNote] = useState(false);
@@ -92,6 +94,7 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
                 const requests = [
                     api.get(`/tasks/${task.id}/logs`),
                     api.get(`/uploads/tasks/${task.id}/media`),
+                    api.get(`/tasks/${task.id}/mes-summary`),
                 ];
 
                 if (role === 'operator') {
@@ -107,17 +110,18 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
 
                 setLogs(Array.isArray(results[0]?.data) ? results[0].data.map(normalizeLog) : []);
                 setMedia(Array.isArray(results[1]?.data) ? results[1].data : []);
+                setMesSummary(results[2]?.data || null);
 
                 if (role === 'operator') {
-                    setAssistant(results[2]?.data || null);
+                    setAssistant(results[3]?.data || null);
                     setClientSummary(null);
                     setSupervisorIntel(null);
                 } else if (role === 'client') {
-                    setClientSummary(results[2]?.data || null);
+                    setClientSummary(results[3]?.data || null);
                     setAssistant(null);
                     setSupervisorIntel(null);
                 } else {
-                    setSupervisorIntel(results[2]?.data || null);
+                    setSupervisorIntel(results[3]?.data || null);
                     setAssistant(null);
                     setClientSummary(null);
                 }
@@ -137,6 +141,22 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
             cancelled = true;
         };
     }, [task?.id, role, addAlert]);
+
+    const refreshWorkspace = async () => {
+        if (!task?.id) return;
+        try {
+            const [logsRes, mediaRes, mesRes] = await Promise.all([
+                api.get(`/tasks/${task.id}/logs`),
+                api.get(`/uploads/tasks/${task.id}/media`),
+                api.get(`/tasks/${task.id}/mes-summary`),
+            ]);
+            setLogs(Array.isArray(logsRes?.data) ? logsRes.data.map(normalizeLog) : []);
+            setMedia(Array.isArray(mediaRes?.data) ? mediaRes.data : []);
+            setMesSummary(mesRes?.data || null);
+        } catch (error) {
+            addAlert(error.response?.data?.detail || 'Unable to refresh MES workspace.', 'error');
+        }
+    };
 
     const recentNotes = useMemo(
         () => logs.filter((entry) => entry.action === 'note_added').slice(0, 4),
@@ -362,6 +382,8 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
                     </div>
                 </div>
             )}
+
+            <MESStageWorkspace task={task} role={role} mesSummary={mesSummary} onRefresh={refreshWorkspace} />
 
             <div className="glass-card rounded-2xl p-4">
                 <div className="flex items-center justify-between gap-3">

@@ -10,6 +10,7 @@ from app.api.v1.auth import router as auth_router
 from app.api.v1.platform import router as platform_router
 from app.api.v1.companies import router as companies_router
 from app.api.v1.users import router as users_router
+from app.api.v1.clients import router as clients_router
 from app.api.v1.tasks import router as tasks_router
 from app.api.v1.machines import router as machines_router
 from app.api.v1.uploads import router as uploads_router
@@ -31,6 +32,7 @@ api_router.include_router(auth_router, prefix="/auth", tags=["Auth"])
 api_router.include_router(platform_router, prefix="/platform", tags=["Platform"])
 api_router.include_router(companies_router, prefix="/companies", tags=["Companies"])
 api_router.include_router(users_router, prefix="/users", tags=["Users"])
+api_router.include_router(clients_router, prefix="/clients", tags=["Clients"])
 api_router.include_router(tasks_router, prefix="/tasks", tags=["Tasks"])
 api_router.include_router(machines_router, prefix="/machines", tags=["Machines"])
 api_router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
@@ -44,4 +46,3 @@ api_router.include_router(client_router, prefix="/client", tags=["Client"])
 api_router.include_router(job_specs_router, prefix="/job-specs", tags=["CNC Job Specs"])
 api_router.include_router(job_processes_router, prefix="/job-processes", tags=["CNC Process Plan"])
 api_router.include_router(ws_router, tags=["WebSocket"])
-

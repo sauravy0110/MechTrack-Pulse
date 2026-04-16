@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react';
 import { Activity, ShieldCheck, Zap, AlertCircle } from 'lucide-react';
-import useAppStore from '../stores/appStore';
+import useAppStore, { ACTIVE_TASK_STATUSES } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
 import { motion } from 'framer-motion';
 import api from '../api/client';
@@ -61,7 +61,7 @@ const MobileStatsView = memo(function MobileStatsView({ embedded = false }) {
 
     if (userRole === 'client') {
         const completed = tasks.filter((task) => task.status === 'completed').length;
-        const active = tasks.filter((task) => ['idle', 'queued', 'in_progress', 'paused', 'delayed'].includes(task.status)).length;
+        const active = tasks.filter((task) => ACTIVE_TASK_STATUSES.has(task.status) && task.status !== 'completed').length;
 
         return (
             <div className={wrapperClass}>

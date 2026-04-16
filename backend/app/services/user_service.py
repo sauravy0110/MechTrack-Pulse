@@ -27,6 +27,7 @@ def create_user(
     role: str,
     phone: str | None = None,
     department: str | None = None,
+    send_welcome_email: bool = True,
 ) -> tuple[User | None, str, str]:
     """
     Create a new user within a company.
@@ -87,15 +88,16 @@ def create_user(
     company = db.query(Company).filter(Company.id == company_id).first()
     company_name = company.name if company else "Your Company"
     
-    email_sent, email_error = send_user_welcome_email(
-        user_name=full_name,
-        user_email=email,
-        company_name=company_name,
-        role=role,
-        temp_password=temp_password
-    )
-    if not email_sent:
-        logger.warning("User welcome email was not delivered to %s: %s", email, email_error)
+    if send_welcome_email:
+        email_sent, email_error = send_user_welcome_email(
+            user_name=full_name,
+            user_email=email,
+            company_name=company_name,
+            role=role,
+            temp_password=temp_password
+        )
+        if not email_sent:
+            logger.warning("User welcome email was not delivered to %s: %s", email, email_error)
 
     return user, temp_password, ""
 

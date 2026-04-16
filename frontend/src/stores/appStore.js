@@ -5,7 +5,23 @@ import { getApiErrorMessage } from '../utils/apiError';
 import useAuthStore from './authStore';
 
 export const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
-export const ACTIVE_TASK_STATUSES = new Set(['idle', 'queued', 'in_progress', 'paused']);
+export const ACTIVE_TASK_STATUSES = new Set([
+    'idle',
+    'queued',
+    'created',
+    'planned',
+    'ready',
+    'assigned',
+    'setup',
+    'setup_done',
+    'first_piece_approval',
+    'in_progress',
+    'paused',
+    'qc_check',
+    'final_inspection',
+    'dispatched',
+    'delayed',
+]);
 
 function deriveOperatorStatus(operator) {
     if (!operator?.is_on_duty) {
@@ -92,6 +108,7 @@ function triggerBrowserDownload(blob, filename) {
 const useAppStore = create((set, get) => ({
     // Data
     users: [],
+    clients: [],
     machines: [],
     tasks: [],
     dashboard: null,
@@ -150,6 +167,17 @@ const useAppStore = create((set, get) => ({
         } catch (error) {
             void error;
             set({ loadingUsers: false });
+        }
+    },
+
+    fetchClients: async () => {
+        try {
+            const { data } = await api.get('/clients/');
+            set({ clients: Array.isArray(data) ? data : [] });
+            return Array.isArray(data) ? data : [];
+        } catch (error) {
+            void error;
+            return [];
         }
     },
 
@@ -409,6 +437,40 @@ const useAppStore = create((set, get) => ({
         }
     },
 
+    createClient: async ({ company_name, contact_person, email, phone, address, send_email = true }) => {
+        try {
+            const { data } = await api.post('/clients/', {
+                company_name,
+                contact_person,
+                email,
+                phone: phone || null,
+                address: address || null,
+                send_email,
+            });
+
+            set((state) => ({
+                clients: state.clients.some((client) => client.id === data.id)
+                    ? state.clients.map((client) => (client.id === data.id ? { ...client, ...data } : client))
+                    : [data, ...state.clients],
+                users: state.users.some((user) => user.id === data.id)
+                    ? state.users.map((user) => (user.id === data.id ? normalizeUser({ ...user, ...data, role: 'client', full_name: data.contact_person }) : user))
+                    : [...state.users, normalizeUser({
+                        id: data.id,
+                        email: data.email,
+                        full_name: data.contact_person,
+                        phone: data.phone,
+                        role: 'client',
+                        is_active: true,
+                    })],
+            }));
+
+            get().addAlert(`Client "${data.company_name}" created successfully.`, 'success');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to create client right now.'));
+        }
+    },
+
     deactivateUser: async (userId) => {
         try {
             await api.delete(`/users/${userId}`);
@@ -624,7 +686,7 @@ const useAppStore = create((set, get) => ({
     getMachineStatus: (machineId) => {
         const tasks = get().tasks.filter((t) => t.machine_id === machineId);
         if (tasks.some((t) => t.status === 'delayed')) return 'delayed';
-        if (tasks.some((t) => ['in_progress', 'queued', 'paused'].includes(t.status))) return 'in_progress';
+        if (tasks.some((t) => ACTIVE_TASK_STATUSES.has(t.status) && t.status !== 'delayed' && t.status !== 'completed')) return 'in_progress';
         if (tasks.some((t) => t.status === 'completed')) return 'completed';
         return 'idle';
     },

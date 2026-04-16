@@ -31,6 +31,7 @@ from app.models.machine import Machine
 from app.models.report import Report
 from app.models.operator_score import OperatorScore
 from app.models.ai_insight import AIInsight
+from app.services.mes_service import MES_ACTIVE_STATUSES
 from app.services.operator_service import MAX_TASKS_PER_OPERATOR, find_best_operator
 from app.services.openrouter_service import (
     answer_global_question_with_openrouter,
@@ -42,7 +43,7 @@ from app.services.openrouter_service import (
 )
 
 
-ACTIVE_TASK_STATUSES = ("idle", "queued", "in_progress", "paused", "delayed")
+ACTIVE_TASK_STATUSES = MES_ACTIVE_STATUSES
 DEFAULT_PRIORITY_HOURS = {
     "low": 1.5,
     "medium": 2.5,
@@ -108,8 +109,22 @@ def _task_eta(task: Task, estimated_hours: float | None) -> datetime | None:
 
 
 def _task_progress(task: Task, estimated_hours: float | None) -> int:
+    cnc_progress = {
+        "created": 10,
+        "planned": 20,
+        "ready": 30,
+        "assigned": 40,
+        "setup": 52,
+        "setup_done": 62,
+        "first_piece_approval": 72,
+        "qc_check": 84,
+        "final_inspection": 92,
+        "dispatched": 97,
+    }
     if task.status == "completed":
         return 100
+    if task.status in cnc_progress:
+        return cnc_progress[task.status]
     if task.status == "idle":
         return 5
     if task.status == "queued":

@@ -6,23 +6,34 @@
 
 import { useState, useEffect } from 'react';
 import useAppStore from '../stores/appStore';
+import api from '../api/client';
 
 export default function ProcessPlanPanel({ task }) {
     const {
         jobProcesses, fetchJobProcesses, aiSuggestProcesses,
         validateProcessPlan, lockProcessPlan, loadingJobProcesses,
+        machines,
+        addAlert,
     } = useAppStore();
 
     const [suggesting, setSuggesting] = useState(false);
     const [validating, setValidating] = useState(false);
     const [locking, setLocking] = useState(false);
     const [validation, setValidation] = useState(null);
-    const [addAlert, setAddAlert] = useLocalAlert();
+    const [localAlert, setLocalAlert] = useLocalAlert();
+    const [addingOperation, setAddingOperation] = useState(false);
+    const [newOperation, setNewOperation] = useState({
+        operation_name: '',
+        machine_id: '',
+        tool_required: '',
+        cycle_time_minutes: '',
+        notes: '',
+    });
 
     const processData = jobProcesses[task?.id];
     const operations = processData?.operations || [];
     const totalTime = processData?.total_cycle_time_minutes || 0;
-    const isJobLocked = task?.status === 'planned' || task?.is_locked && task?.status !== 'created';
+    const isJobLocked = task?.status === 'planned' || operations.some((op) => op.is_locked);
 
     useEffect(() => {
         if (task?.id) fetchJobProcesses(task.id);
@@ -34,7 +45,7 @@ export default function ProcessPlanPanel({ task }) {
         try {
             await aiSuggestProcesses(task.id);
         } catch (e) {
-            setAddAlert(e.message, 'error');
+            setLocalAlert(e.message, 'error');
         } finally {
             setSuggesting(false);
         }
@@ -46,7 +57,7 @@ export default function ProcessPlanPanel({ task }) {
             const result = await validateProcessPlan(task.id);
             setValidation(result);
         } catch (e) {
-            setAddAlert(e.message, 'error');
+            setLocalAlert(e.message, 'error');
         } finally {
             setValidating(false);
         }
@@ -58,9 +69,34 @@ export default function ProcessPlanPanel({ task }) {
         try {
             await lockProcessPlan(task.id);
         } catch (e) {
-            setAddAlert(e.message, 'error');
+            setLocalAlert(e.message, 'error');
         } finally {
             setLocking(false);
+        }
+    };
+
+    const handleAddOperation = async () => {
+        if (!newOperation.operation_name.trim()) {
+            setLocalAlert('Operation name is required.', 'error');
+            return;
+        }
+        setAddingOperation(true);
+        try {
+            await api.post(`/job-processes/${task.id}/add`, {
+                operation_name: newOperation.operation_name,
+                machine_id: newOperation.machine_id || null,
+                tool_required: newOperation.tool_required || null,
+                cycle_time_minutes: newOperation.cycle_time_minutes ? Number(newOperation.cycle_time_minutes) : null,
+                sequence_order: operations.length + 1,
+                notes: newOperation.notes || null,
+            });
+            await fetchJobProcesses(task.id);
+            setNewOperation({ operation_name: '', machine_id: '', tool_required: '', cycle_time_minutes: '', notes: '' });
+            addAlert('Operation added to process plan.', 'success');
+        } catch (e) {
+            setLocalAlert(e.response?.data?.detail || e.message || 'Unable to add operation.', 'error');
+        } finally {
+            setAddingOperation(false);
         }
     };
 
@@ -158,15 +194,83 @@ export default function ProcessPlanPanel({ task }) {
             )}
 
             {/* Local alert */}
-            {addAlert.message && (
+            {localAlert.message && (
                 <div style={{
                     padding: '8px 12px', fontSize: '12px',
-                    background: addAlert.type === 'error' ? 'rgba(248,113,113,0.1)' : 'rgba(99,102,241,0.1)',
-                    border: `1px solid ${addAlert.type === 'error' ? 'rgba(248,113,113,0.3)' : 'rgba(99,102,241,0.3)'}`,
+                    background: localAlert.type === 'error' ? 'rgba(248,113,113,0.1)' : 'rgba(99,102,241,0.1)',
+                    border: `1px solid ${localAlert.type === 'error' ? 'rgba(248,113,113,0.3)' : 'rgba(99,102,241,0.3)'}`,
                     borderRadius: '8px',
-                    color: addAlert.type === 'error' ? '#F87171' : '#A5B4FC',
+                    color: localAlert.type === 'error' ? '#F87171' : '#A5B4FC',
                 }}>
-                    {addAlert.message}
+                    {localAlert.message}
+                </div>
+            )}
+
+            {!isJobLocked && (
+                <div style={{
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    background: 'rgba(255,255,255,0.02)',
+                    display: 'grid',
+                    gap: '8px',
+                }}>
+                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-primary)' }}>Manual Operation</div>
+                    <input
+                        value={newOperation.operation_name}
+                        onChange={(e) => setNewOperation((current) => ({ ...current, operation_name: e.target.value }))}
+                        placeholder="e.g. Finish Turning (OD)"
+                        className="input-glass"
+                    />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <select
+                            value={newOperation.machine_id}
+                            onChange={(e) => setNewOperation((current) => ({ ...current, machine_id: e.target.value }))}
+                            className="input-glass"
+                        >
+                            <option value="">Select machine</option>
+                            {machines.map((machine) => (
+                                <option key={machine.id} value={machine.id}>{machine.name}</option>
+                            ))}
+                        </select>
+                        <input
+                            value={newOperation.cycle_time_minutes}
+                            onChange={(e) => setNewOperation((current) => ({ ...current, cycle_time_minutes: e.target.value }))}
+                            placeholder="Cycle min"
+                            className="input-glass"
+                        />
+                    </div>
+                    <input
+                        value={newOperation.tool_required}
+                        onChange={(e) => setNewOperation((current) => ({ ...current, tool_required: e.target.value }))}
+                        placeholder="Tool / fixture"
+                        className="input-glass"
+                    />
+                    <textarea
+                        value={newOperation.notes}
+                        onChange={(e) => setNewOperation((current) => ({ ...current, notes: e.target.value }))}
+                        placeholder="Notes for supervisor / operator"
+                        className="input-glass"
+                        rows={2}
+                        style={{ resize: 'vertical' }}
+                    />
+                    <button
+                        type="button"
+                        onClick={handleAddOperation}
+                        disabled={addingOperation}
+                        style={{
+                            padding: '9px',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            background: 'rgba(16,185,129,0.15)',
+                            border: '1px solid rgba(16,185,129,0.3)',
+                            color: '#34D399',
+                            cursor: addingOperation ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {addingOperation ? '⟳ Adding…' : '+ Add Operation'}
+                    </button>
                 </div>
             )}
 
