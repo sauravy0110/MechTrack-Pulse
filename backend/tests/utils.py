@@ -22,13 +22,21 @@ def register_company(client: TestClient, name: str = "Test Corp", email: str = N
 
 def approve_company(client: TestClient, admin_token: str, company_id: int, email: str = "owner@test.com"):
     """Approve a company as platform admin and return the temporary password."""
-    res = client.patch(f"/api/v1/platform/companies/{company_id}/approve", headers={
-        "Authorization": f"Bearer {admin_token}"
-    }, json={
-        "owner_name": "Test Owner",
-        "owner_email": email,
-        "owner_phone": "+919876543210"
-    })
+    from app.api.v1 import platform as platform_api
+
+    original_send_owner_welcome_email = platform_api.send_owner_welcome_email
+    platform_api.send_owner_welcome_email = lambda **_kwargs: (False, "disabled in tests")
+    try:
+        res = client.patch(f"/api/v1/platform/companies/{company_id}/approve", headers={
+            "Authorization": f"Bearer {admin_token}"
+        }, json={
+            "owner_name": "Test Owner",
+            "owner_email": email,
+            "owner_phone": "+919876543210"
+        })
+    finally:
+        platform_api.send_owner_welcome_email = original_send_owner_welcome_email
+
     assert res.status_code == 200
     return res.json()["temp_password"]
 

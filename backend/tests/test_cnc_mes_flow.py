@@ -1,6 +1,7 @@
 import uuid
 
-from tests.utils import approve_company, create_machine, create_user, login_user, register_company
+from app.services.cnc_ai_service import _build_specs_from_ocr_payload, _normalize_ocr_payload
+from tests.utils import approve_company, create_machine, create_task, create_user, login_user, register_company
 
 
 def bootstrap_company(client, platform_admin_token):
@@ -164,6 +165,81 @@ def test_drawing_text_extraction_preserves_real_dimensions(client, platform_admi
     assert specs_map["Thread_Spec"] == "M20"
     assert specs_map["Keyway_Width"] == "8"
     assert specs_map["Runout_Tolerance"] == "0.02"
+
+
+def test_strict_ocr_pipeline_normalizes_threads_and_validation_states():
+    ocr_payload = _normalize_ocr_payload(
+        {
+            "raw_text": "Overall length 250 mm, Ø40, Thread M20, keyway width 8 mm, runout 0.02 mm",
+            "dimensions": {
+                "lengths_mm": [250],
+                "diameters_mm": [40],
+                "threads": [20],
+            },
+            "features": {
+                "keyways": [{"width_mm": 8, "depth_mm": 4}],
+            },
+            "tolerances": {
+                "runout_mm": 0.02,
+            },
+            "confidence": {
+                "overall": 0.94,
+                "comment": "clear drawing text",
+            },
+        }
+    )
+
+    specs, summary = _build_specs_from_ocr_payload(ocr_payload)
+    specs_map = {item["field_name"]: item for item in specs}
+
+    assert ocr_payload["dimensions"]["threads"] == ["M20"]
+    assert specs_map["Overall_Length"]["ai_value"] == "250"
+    assert specs_map["Diameter_1_OD"]["ai_value"] == "40"
+    assert specs_map["Thread_Spec"]["ai_value"] == "M20"
+    assert specs_map["Keyway_Width"]["ai_value"] == "8"
+    assert specs_map["Runout_Tolerance"]["ai_value"] == "0.02"
+    assert specs_map["Thread_Spec"]["review_status"] == "high_confidence"
+    assert specs_map["Diameter_1_OD"]["review_status"] == "needs_review"
+    assert summary["review_counts"]["invalid"] == 0
+
+
+def test_invalid_specs_require_human_value_before_confirm_all(client, platform_admin_token):
+    owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
+    task = create_task(client, owner_token, "Manual Review Gate", machine_id, operator_id)
+    task_id = task["id"]
+
+    add_response = client.post(
+        f"/api/v1/job-specs/{task_id}/add",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "field_name": "Diameter_1_OD",
+            "ai_value": "999",
+            "unit": "mm",
+            "ai_confidence": 0.0,
+        },
+    )
+    assert add_response.status_code == 201
+    spec_id = add_response.json()["id"]
+
+    confirm_response = client.post(
+        f"/api/v1/job-specs/{task_id}/confirm-all",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert confirm_response.status_code == 400
+    assert "typed human value" in confirm_response.text
+
+    patch_response = client.patch(
+        f"/api/v1/job-specs/spec/{spec_id}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"human_value": "40", "is_confirmed": True},
+    )
+    assert patch_response.status_code == 200
+
+    confirm_response = client.post(
+        f"/api/v1/job-specs/{task_id}/confirm-all",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert confirm_response.status_code == 200
 
 
 def test_full_mes_flow_reaches_dispatch_and_completion(client, platform_admin_token, monkeypatch):

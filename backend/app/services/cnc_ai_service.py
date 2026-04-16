@@ -19,6 +19,7 @@ from __future__ import annotations
 import logging
 import random
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
@@ -69,6 +70,118 @@ STANDARD_OPERATIONS = [
     {"name": "Final Inspection & Marking", "cycle_time": 20},
 ]
 
+STANDARD_THREADS = {6, 8, 10, 12, 14, 16, 20, 24}
+DEFAULT_OPENROUTER_VISION_MODEL = "qwen/qwen2.5-vl-32b-instruct:free"
+
+VISION_OCR_SYSTEM_PROMPT = """
+You are an expert mechanical engineering drawing interpreter.
+
+Your task is to extract ALL dimensions and specifications from the provided engineering drawing image with maximum accuracy.
+
+========================
+CRITICAL EXTRACTION RULES
+========================
+
+1. ONLY extract values that are explicitly written in the drawing.
+2. NEVER estimate dimensions from visual proportions, scaling, or geometry.
+3. NEVER hallucinate or invent missing values.
+4. If a value is unclear, partially visible, or ambiguous -> return null.
+5. Preserve engineering notation exactly:
+   - Diameter: Ø (e.g., Ø40)
+   - Radius: R (e.g., R6)
+   - Threads: M (e.g., M12)
+   - Units: assume mm unless specified
+6. Do NOT assume:
+   - Threads
+   - Tolerances
+   - Surface finish
+   - Fits or GD&T
+   unless explicitly written.
+
+========================
+EXTRACTION REQUIREMENTS
+========================
+
+Extract the following categories:
+
+1. Linear dimensions (lengths, steps, total length)
+2. Diameters (Ø values)
+3. Radii (R values)
+4. Threads (M values)
+5. Angles (if present)
+6. Notes / annotations (exact text)
+7. Feature-specific dimensions (slots, keyways, holes)
+
+========================
+STRUCTURING RULES
+========================
+
+- Group values logically
+- Avoid duplicates
+- Maintain numeric precision exactly as written
+- Return values as numbers without symbols, but preserve type in category
+
+========================
+OUTPUT FORMAT (STRICT JSON ONLY)
+========================
+
+{
+  "raw_text": "Full OCR text exactly as seen",
+  "dimensions": {
+    "lengths_mm": [],
+    "diameters_mm": [],
+    "radii_mm": [],
+    "threads": [],
+    "angles_deg": []
+  },
+  "features": {
+    "keyways": [
+      {
+        "width_mm": null,
+        "depth_mm": null
+      }
+    ],
+    "slots": [
+      {
+        "width_mm": null,
+        "length_mm": null,
+        "end_radius_mm": null
+      }
+    ]
+  },
+  "tolerances": {
+    "surface_roughness_Ra": null,
+    "runout_mm": null,
+    "concentricity_mm": null
+  },
+  "notes": [],
+  "confidence": {
+    "overall": 0.0,
+    "comment": "Explain if anything was unclear or missing"
+  }
+}
+
+========================
+CONFIDENCE SCORING RULES
+========================
+
+- 0.9-1.0 -> clearly visible and readable
+- 0.7-0.9 -> minor ambiguity
+- below 0.7 -> unclear / partially visible
+- 0.0 -> not present in drawing
+
+========================
+FINAL INSTRUCTION
+========================
+
+This is a precision-critical engineering task.
+
+If unsure -> return null instead of guessing.
+
+Do NOT prioritize completeness over correctness.
+Accuracy is more important than filling all fields.
+""".strip()
+
 
 def extract_drawing_specs(
     db: Session,
@@ -98,31 +211,25 @@ def extract_drawing_specs(
 
     extracted_specs: list[dict[str, Any]] = []
     extraction_notes: list[str] = []
+    ocr_payload: dict[str, Any] | None = None
+    validation_summary: dict[str, Any] | None = None
 
-    # ── Attempt vision-based extraction from uploaded drawing ─────────
+    # ── Attempt vision-based OCR on the uploaded drawing ──────────────
     if openrouter_vision_enabled() and drawing_image_url:
         llm_result = _chat_json_with_image(
-            model=settings.OPENROUTER_MODEL_VISION or settings.OPENROUTER_MODEL_GENERAL,
-            system_prompt=(
-                "You are a CNC manufacturing engineer analyzing a shaft drawing image. "
-                "Extract all clearly readable measurable parameters from the drawing. "
-                "Return valid JSON with key 'specs' containing an array of objects. "
-                "Each object must contain: field_name, ai_value, unit, ai_confidence. "
-                "Use these canonical field names when possible: Overall_Length, Diameter_1_OD, "
-                "Diameter_2_OD, Diameter_3_OD, Thread_Spec, Keyway_Width, Keyway_Depth, "
-                "Groove_Width, Surface_Roughness, Runout_Tolerance, Concentricity_Tolerance. "
-                "Only return values that are actually visible or strongly supported by the image/text."
-            ),
+            model=settings.OPENROUTER_MODEL_VISION or DEFAULT_OPENROUTER_VISION_MODEL,
+            system_prompt=VISION_OCR_SYSTEM_PROMPT,
             user_payload={
                 "part_name": part_name or task.title,
                 "drawing_description": drawing_context,
                 "material": task.material_type,
             },
             image_url=drawing_image_url,
-            temperature=0.05,
-            max_tokens=1400,
+            temperature=0.0,
+            max_tokens=1600,
         )
-        extracted_specs = _normalize_extracted_specs(llm_result.get("specs") if llm_result else None)
+        ocr_payload = _normalize_ocr_payload(llm_result, drawing_context)
+        extracted_specs, validation_summary = _build_specs_from_ocr_payload(ocr_payload)
         if extracted_specs:
             _persist_specs(db, company_id, task_id, extracted_specs)
             return {
@@ -130,68 +237,22 @@ def extract_drawing_specs(
                 "source": "ai_vision",
                 "confidence": "high",
                 "message": f"AI extracted {len(extracted_specs)} specifications from the uploaded drawing.",
+                "ocr_payload": ocr_payload,
+                "validation_summary": validation_summary,
                 "specs": extracted_specs,
             }
-        extraction_notes.append("Uploaded drawing could not be parsed by the configured vision model.")
+        extraction_notes.append(
+            ocr_payload.get("confidence", {}).get("comment")
+            or "Uploaded drawing could not be parsed confidently by the configured vision model."
+        )
     elif drawing_image_url:
         extraction_notes.append(
             "Uploaded drawing OCR needs OPENROUTER_API_KEY and OPENROUTER_MODEL_VISION to be configured."
         )
 
-    # ── Attempt real AI extraction ──────────────────────────
-    if openrouter_enabled() and drawing_context:
-        llm_result = _chat_json(
-            model=settings.OPENROUTER_MODEL_GENERAL,
-            system_prompt=(
-                "You are a CNC manufacturing engineer analyzing a shaft drawing. "
-                "Extract all measurable parameters from the drawing description. "
-                "Return valid JSON with key 'specs' containing an array of objects, "
-                "each with: field_name (string), ai_value (string with number), "
-                "unit (string: mm/inch/Ra/M for thread), ai_confidence (float 0-1). "
-                "Common fields: Overall_Length, Diameter_1_OD, Diameter_2_OD, "
-                "Thread_Spec, Keyway_Width, Surface_Roughness, Runout_Tolerance. "
-                "Only include fields clearly identifiable from the description."
-            ),
-            user_payload={
-                "part_name": part_name or task.title,
-                "drawing_description": drawing_context,
-                "material": task.material_type,
-            },
-            temperature=0.1,
-            max_tokens=1200,
-        )
-        if llm_result and isinstance(llm_result.get("specs"), list):
-            for spec_data in llm_result["specs"]:
-                if isinstance(spec_data, dict) and spec_data.get("field_name"):
-                    spec = JobSpec(
-                        company_id=company_id,
-                        task_id=task_id,
-                        field_name=str(spec_data.get("field_name", ""))[:100],
-                        ai_value=str(spec_data.get("ai_value", ""))[:200],
-                        ai_confidence=float(spec_data.get("ai_confidence", 0.75)),
-                        unit=str(spec_data.get("unit", "mm"))[:20],
-                        human_value=None,
-                        is_confirmed=False,
-                    )
-                    db.add(spec)
-                    extracted_specs.append({
-                        "field_name": spec.field_name,
-                        "ai_value": spec.ai_value,
-                        "ai_confidence": spec.ai_confidence,
-                        "unit": spec.unit,
-                    })
-            if extracted_specs:
-                db.commit()
-                return {
-                    "status": "success",
-                    "source": "ai_llm",
-                    "confidence": "high",
-                "message": f"AI extracted {len(extracted_specs)} specifications from drawing description.",
-                    "specs": extracted_specs,
-                }
-
-    # ── Deterministic text parsing from OCR / pasted text ───
-    extracted_specs = _extract_specs_from_text(drawing_context)
+    # ── Deterministic text parsing from OCR / pasted text ─────────────
+    text_payload = _normalize_ocr_payload({"raw_text": drawing_context or ""}, drawing_context)
+    extracted_specs, validation_summary = _build_specs_from_ocr_payload(text_payload)
     if extracted_specs:
         _persist_specs(db, company_id, task_id, extracted_specs)
         message = f"Extracted {len(extracted_specs)} specifications from the provided drawing text."
@@ -202,6 +263,8 @@ def extract_drawing_specs(
             "source": "text_parser",
             "confidence": "medium",
             "message": message,
+            "ocr_payload": text_payload,
+            "validation_summary": validation_summary,
             "specs": extracted_specs,
         }
 
@@ -222,7 +285,366 @@ def extract_drawing_specs(
             "Please verify each value against the actual drawing before locking."
             f"{note_text}"
         ).strip(),
+        "validation_summary": {
+            "accepted_fields": [item["field_name"] for item in extracted_specs],
+            "review_counts": {"high_confidence": 0, "medium_review": len(extracted_specs), "invalid": 0},
+        },
         "specs": extracted_specs,
+    }
+
+
+def _stringify_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(int(value)) if value.is_integer() else format(value, "g")
+    cleaned = str(value).strip()
+    return cleaned or None
+
+
+def _to_decimal(value: str | None) -> Decimal | None:
+    cleaned = _stringify_value(value)
+    if not cleaned:
+        return None
+    try:
+        return Decimal(cleaned)
+    except (InvalidOperation, TypeError):
+        return None
+
+
+def _dedupe_preserve_order(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        unique.append(value)
+    return unique
+
+
+def parse_dimensions(text: str | None) -> dict[str, list[str]]:
+    if not text or not text.strip():
+        return {
+            "lengths_mm": [],
+            "diameters_mm": [],
+            "radii_mm": [],
+            "threads": [],
+            "angles_deg": [],
+        }
+
+    normalized_text = " ".join(text.split())
+    diameters = _dedupe_preserve_order([
+        match.group(1)
+        for match in re.finditer(r"(?:Ø|⌀)\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+    ])
+    radii = _dedupe_preserve_order([
+        match.group(1)
+        for match in re.finditer(r"\bR\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+    ])
+    threads = _dedupe_preserve_order([
+        f"M{match.group(1)}"
+        for match in re.finditer(r"\bM\s*(\d+(?:\.\d+)?)", normalized_text, flags=re.IGNORECASE)
+    ])
+    angles = _dedupe_preserve_order([
+        match.group(1)
+        for match in re.finditer(r"(\d+(?:\.\d+)?)\s*(?:°|deg)", normalized_text, flags=re.IGNORECASE)
+    ])
+
+    lengths: list[str] = []
+    for match in re.finditer(r"\b\d+(?:\.\d+)?\b", normalized_text):
+        value = match.group(0)
+        start = match.start()
+        end = match.end()
+        prefix = normalized_text[max(0, start - 2):start]
+        suffix = normalized_text[end:end + 3]
+        if "Ø" in prefix or "⌀" in prefix:
+            continue
+        if re.search(r"\bR\s*$", prefix, flags=re.IGNORECASE):
+            continue
+        if re.search(r"\bM\s*$", prefix, flags=re.IGNORECASE):
+            continue
+        if "°" in suffix or suffix.lower().startswith("deg"):
+            continue
+        lengths.append(value)
+
+    return {
+        "lengths_mm": _dedupe_preserve_order(lengths),
+        "diameters_mm": diameters,
+        "radii_mm": radii,
+        "threads": threads,
+        "angles_deg": angles,
+    }
+
+
+def validate_presence(value: str | None, text: str | None) -> bool:
+    cleaned_value = _stringify_value(value)
+    if not cleaned_value or not text:
+        return False
+    normalized_text = text.upper().replace("⌀", "Ø")
+    return cleaned_value.upper().replace("⌀", "Ø") in normalized_text
+
+
+def validate_thread(thread: str | None) -> bool:
+    cleaned_thread = _stringify_value(thread)
+    if not cleaned_thread:
+        return True
+    match = re.search(r"M\s*(\d+(?:\.\d+)?)", cleaned_thread, flags=re.IGNORECASE)
+    if not match:
+        return False
+    try:
+        size = int(Decimal(match.group(1)))
+    except (InvalidOperation, ValueError):
+        return False
+    return size in STANDARD_THREADS
+
+
+def validate_range(value: str | None) -> bool:
+    numeric_value = _to_decimal(value)
+    if numeric_value is None:
+        return False
+    return Decimal("1") <= numeric_value <= Decimal("500")
+
+
+def validate_length_chain(lengths: list[str], total: str | None) -> bool:
+    total_value = _to_decimal(total)
+    length_values = [_to_decimal(length) for length in lengths]
+    if total_value is None or not length_values or any(value is None for value in length_values):
+        return False
+    return sum(length_values, Decimal("0")) == total_value
+
+
+def confidence_score(value: str | None, text: str | None, *, high: bool = True) -> float:
+    if not validate_presence(value, text):
+        return 0.0
+    return 0.95 if high else 0.78
+
+
+def _normalize_numeric_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    normalized = [_stringify_value(value) for value in values]
+    return _dedupe_preserve_order([value for value in normalized if value])
+
+
+def _normalize_thread_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+
+    normalized_threads: list[str] = []
+    for value in values:
+        cleaned_value = _stringify_value(value)
+        if not cleaned_value:
+            continue
+        match = re.search(r"(?:M\s*)?(\d+(?:\.\d+)?)", cleaned_value, flags=re.IGNORECASE)
+        if not match:
+            continue
+        normalized_threads.append(f"M{match.group(1)}")
+
+    return _dedupe_preserve_order(normalized_threads)
+
+
+def _normalize_feature_items(values: Any, keys: tuple[str, ...]) -> list[dict[str, str | None]]:
+    if not isinstance(values, list):
+        return []
+    items: list[dict[str, str | None]] = []
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        items.append({key: _stringify_value(item.get(key)) for key in keys})
+    return items
+
+
+def _normalize_ocr_payload(payload: Any, fallback_text: str | None = None) -> dict[str, Any]:
+    raw_text = _stringify_value(payload.get("raw_text")) if isinstance(payload, dict) else None
+    raw_text = raw_text or _stringify_value(fallback_text) or ""
+    parsed_dimensions = parse_dimensions(raw_text)
+
+    dimensions = payload.get("dimensions") if isinstance(payload, dict) and isinstance(payload.get("dimensions"), dict) else {}
+    features = payload.get("features") if isinstance(payload, dict) and isinstance(payload.get("features"), dict) else {}
+    tolerances = payload.get("tolerances") if isinstance(payload, dict) and isinstance(payload.get("tolerances"), dict) else {}
+    confidence = payload.get("confidence") if isinstance(payload, dict) and isinstance(payload.get("confidence"), dict) else {}
+
+    normalized_dimensions = {
+        "lengths_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("lengths_mm")) + parsed_dimensions["lengths_mm"]),
+        "diameters_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("diameters_mm")) + parsed_dimensions["diameters_mm"]),
+        "radii_mm": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("radii_mm")) + parsed_dimensions["radii_mm"]),
+        "threads": _dedupe_preserve_order(_normalize_thread_list(dimensions.get("threads")) + parsed_dimensions["threads"]),
+        "angles_deg": _dedupe_preserve_order(_normalize_numeric_list(dimensions.get("angles_deg")) + parsed_dimensions["angles_deg"]),
+    }
+
+    return {
+        "raw_text": raw_text,
+        "dimensions": normalized_dimensions,
+        "features": {
+            "keyways": _normalize_feature_items(features.get("keyways"), ("width_mm", "depth_mm")),
+            "slots": _normalize_feature_items(features.get("slots"), ("width_mm", "length_mm", "end_radius_mm")),
+        },
+        "tolerances": {
+            "surface_roughness_Ra": _stringify_value(tolerances.get("surface_roughness_Ra")),
+            "runout_mm": _stringify_value(tolerances.get("runout_mm")),
+            "concentricity_mm": _stringify_value(tolerances.get("concentricity_mm")),
+        },
+        "notes": [
+            str(note).strip()
+            for note in (payload.get("notes") if isinstance(payload, dict) and isinstance(payload.get("notes"), list) else [])
+            if str(note).strip()
+        ],
+        "confidence": {
+            "overall": float(confidence.get("overall", 0.0) or 0.0),
+            "comment": _stringify_value(confidence.get("comment")) or "",
+        },
+    }
+
+
+def _review_status_from_confidence(ai_confidence: float | None) -> str:
+    confidence_value = float(ai_confidence or 0.0)
+    if confidence_value >= 0.9:
+        return "high_confidence"
+    if confidence_value >= 0.7:
+        return "needs_review"
+    return "invalid"
+
+
+def _candidate_from_source(
+    field_name: str,
+    value: str | None,
+    unit: str,
+    *,
+    source_type: str,
+) -> dict[str, Any] | None:
+    cleaned_value = _stringify_value(value)
+    if not cleaned_value:
+        return None
+    return {
+        "field_name": field_name,
+        "ai_value": cleaned_value,
+        "unit": unit,
+        "source_type": source_type,
+    }
+
+
+def _build_specs_from_ocr_payload(ocr_payload: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw_text = ocr_payload.get("raw_text", "")
+    labelled_specs = {
+        spec["field_name"]: {**spec, "source_type": "labeled_text"}
+        for spec in _extract_specs_from_text(raw_text)
+    }
+
+    candidates: list[dict[str, Any]] = list(labelled_specs.values())
+    lengths = ocr_payload.get("dimensions", {}).get("lengths_mm", [])
+    diameters = ocr_payload.get("dimensions", {}).get("diameters_mm", [])
+    threads = ocr_payload.get("dimensions", {}).get("threads", [])
+    keyways = ocr_payload.get("features", {}).get("keyways", [])
+    tolerances = ocr_payload.get("tolerances", {})
+
+    if "Overall_Length" not in labelled_specs and len(lengths) == 1:
+        candidate = _candidate_from_source("Overall_Length", lengths[0], "mm", source_type="ocr_dimensions")
+        if candidate:
+            candidates.append(candidate)
+
+    for index, field_name in enumerate(("Diameter_1_OD", "Diameter_2_OD", "Diameter_3_OD")):
+        if field_name in labelled_specs or index >= len(diameters):
+            continue
+        candidate = _candidate_from_source(field_name, diameters[index], "mm", source_type="ocr_dimensions")
+        if candidate:
+            candidates.append(candidate)
+
+    if "Thread_Spec" not in labelled_specs and threads:
+        candidate = _candidate_from_source("Thread_Spec", threads[0], "", source_type="ocr_dimensions")
+        if candidate:
+            candidates.append(candidate)
+
+    if keyways:
+        first_keyway = keyways[0]
+        if "Keyway_Width" not in labelled_specs:
+            candidate = _candidate_from_source("Keyway_Width", first_keyway.get("width_mm"), "mm", source_type="feature")
+            if candidate:
+                candidates.append(candidate)
+        if "Keyway_Depth" not in labelled_specs:
+            candidate = _candidate_from_source("Keyway_Depth", first_keyway.get("depth_mm"), "mm", source_type="feature")
+            if candidate:
+                candidates.append(candidate)
+
+    tolerance_map = {
+        "Surface_Roughness": ("surface_roughness_Ra", "Ra"),
+        "Runout_Tolerance": ("runout_mm", "mm"),
+        "Concentricity_Tolerance": ("concentricity_mm", "mm"),
+    }
+    for field_name, (payload_key, unit) in tolerance_map.items():
+        if field_name in labelled_specs:
+            continue
+        candidate = _candidate_from_source(field_name, tolerances.get(payload_key), unit, source_type="tolerance")
+        if candidate:
+            candidates.append(candidate)
+
+    validated_specs: list[dict[str, Any]] = []
+    rejected_fields: list[dict[str, str]] = []
+
+    for candidate in candidates:
+        cleaned_value = candidate["ai_value"]
+        field_name = candidate["field_name"]
+        unit = candidate["unit"]
+        source_type = candidate["source_type"]
+
+        is_tolerance_field = field_name in {"Surface_Roughness", "Runout_Tolerance", "Concentricity_Tolerance"}
+        if not validate_presence(cleaned_value, raw_text):
+            rejected_fields.append({"field_name": field_name, "reason": "Value was not found explicitly in OCR text"})
+            validated_specs.append({
+                "field_name": field_name,
+                "ai_value": cleaned_value,
+                "ai_confidence": 0.0,
+                "unit": unit,
+                "review_status": "invalid",
+            })
+            continue
+        if field_name == "Thread_Spec" and not validate_thread(cleaned_value):
+            rejected_fields.append({"field_name": field_name, "reason": "Thread size is outside the allowed standard set"})
+            validated_specs.append({
+                "field_name": field_name,
+                "ai_value": cleaned_value,
+                "ai_confidence": 0.0,
+                "unit": unit,
+                "review_status": "invalid",
+            })
+            continue
+        if not is_tolerance_field and unit in {"mm", ""} and field_name != "Thread_Spec" and not validate_range(cleaned_value):
+            rejected_fields.append({"field_name": field_name, "reason": "Value is outside the accepted engineering range"})
+            validated_specs.append({
+                "field_name": field_name,
+                "ai_value": cleaned_value,
+                "ai_confidence": 0.0,
+                "unit": unit,
+                "review_status": "invalid",
+            })
+            continue
+
+        ai_confidence = confidence_score(cleaned_value, raw_text, high=source_type == "labeled_text")
+        validated_specs.append({
+            "field_name": field_name,
+            "ai_value": cleaned_value,
+            "ai_confidence": ai_confidence,
+            "unit": unit,
+            "review_status": _review_status_from_confidence(ai_confidence),
+        })
+
+    length_chain_ok = validate_length_chain(lengths[1:], lengths[0]) if len(lengths) > 1 else False
+    review_counts = {
+        "high_confidence": len([spec for spec in validated_specs if spec["ai_confidence"] >= 0.9]),
+        "medium_review": len([spec for spec in validated_specs if 0.7 <= spec["ai_confidence"] < 0.9]),
+        "invalid": len([spec for spec in validated_specs if spec["ai_confidence"] < 0.7]),
+    }
+
+    return validated_specs, {
+        "accepted_fields": [spec["field_name"] for spec in validated_specs if spec["ai_confidence"] >= 0.7],
+        "rejected_fields": rejected_fields,
+        "review_counts": review_counts,
+        "length_chain_consistent": length_chain_ok,
+        "raw_text_present": bool(raw_text.strip()),
     }
 
 

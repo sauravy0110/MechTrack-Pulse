@@ -74,6 +74,8 @@ export default function JobCreationModal() {
     const [extracting, setExtracting] = useState(false);
     const [specs, setSpecs] = useState([]);
     const [editedSpecs, setEditedSpecs] = useState({}); // { [specId]: humanValue }
+    const [extractionMessage, setExtractionMessage] = useState('');
+    const [validationSummary, setValidationSummary] = useState(null);
     const [confirming, setConfirming] = useState(false);
 
     // Step 4: Lock
@@ -100,7 +102,7 @@ export default function JobCreationModal() {
         });
         setCreatedClientCreds(null);
         setPartName(''); setMaterialType(''); setMaterialBatch(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
-        setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setConfirming(false); setLocking(false);
+        setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setExtractionMessage(''); setValidationSummary(null); setConfirming(false); setLocking(false);
     };
 
     if (!isJobCreationModalOpen) return null;
@@ -214,6 +216,9 @@ export default function JobCreationModal() {
                 part_name: partName,
             });
             if (result?.specs) setSpecs(result.specs);
+            setEditedSpecs({});
+            setExtractionMessage(result?.message || '');
+            setValidationSummary(result?.validation_summary || null);
         } catch (e) {
             setError(e.message);
         } finally {
@@ -228,6 +233,19 @@ export default function JobCreationModal() {
     };
 
     const handleConfirmAll = async () => {
+        const hasBlockingInvalidSpecs = specs.some((spec) => {
+            const isInvalid = spec.review_status ? spec.review_status === 'invalid' : (spec.ai_confidence || 0) < 0.7;
+            if (!isInvalid) {
+                return false;
+            }
+            const currentValue = (editedSpecs[spec.id] ?? spec.human_value ?? '').trim();
+            return !currentValue;
+        });
+        if (hasBlockingInvalidSpecs) {
+            setError('Invalid OCR rows need a typed human value before you can confirm and lock the job.');
+            return;
+        }
+
         setConfirming(true);
         try {
             // Save any pending edits first
@@ -237,6 +255,7 @@ export default function JobCreationModal() {
             await confirmAllSpecs(taskId);
             const specData = await fetchJobSpecs(taskId);
             if (specData) setSpecs(specData.specs || []);
+            setEditedSpecs({});
             setStep(4);
         } catch (e) {
             setError(e.message);
@@ -244,6 +263,15 @@ export default function JobCreationModal() {
             setConfirming(false);
         }
     };
+
+    const hasBlockingInvalidSpecs = specs.some((spec) => {
+        const isInvalid = spec.review_status ? spec.review_status === 'invalid' : (spec.ai_confidence || 0) < 0.7;
+        if (!isInvalid) {
+            return false;
+        }
+        const currentValue = (editedSpecs[spec.id] ?? spec.human_value ?? '').trim();
+        return !currentValue;
+    });
 
     const handleLock = async () => {
         setLocking(true);
@@ -351,6 +379,9 @@ export default function JobCreationModal() {
                             onDrawingUpload={handleDrawingUpload}
                             specs={specs} onExtract={handleExtract} extracting={extracting}
                             onSpecEdit={handleSpecEdit}
+                            editedSpecs={editedSpecs}
+                            extractionMessage={extractionMessage}
+                            validationSummary={validationSummary}
                             partName={partName}
                             aiProviderStatus={aiProviderStatus}
                         />
@@ -381,10 +412,10 @@ export default function JobCreationModal() {
                             <button
                                 type="button"
                                 onClick={handleConfirmAll}
-                                disabled={confirming}
+                                disabled={confirming || hasBlockingInvalidSpecs}
                                 className="rounded-xl border border-success/25 bg-success/10 px-4 py-3 text-sm font-semibold text-success disabled:cursor-not-allowed disabled:opacity-60"
                             >
-                                {confirming ? 'Confirming...' : 'Confirm All & Continue'}
+                                {confirming ? 'Confirming...' : hasBlockingInvalidSpecs ? 'Resolve Invalid Fields' : 'Review Complete & Continue'}
                             </button>
                         )}
                         {step < 3 && (
@@ -610,14 +641,63 @@ function StepAISpecs({
     onExtract,
     extracting,
     onSpecEdit,
+    editedSpecs,
+    extractionMessage,
+    validationSummary,
     partName,
     aiProviderStatus,
 }) {
-    const confidenceColor = (c) => {
-        if (!c) return '#8B8FA8';
-        if (c >= 0.85) return '#34D399';
-        if (c >= 0.70) return '#FBBF24';
-        return '#F87171';
+    const getReviewMeta = (spec) => {
+        const status = spec.review_status || ((spec.ai_confidence || 0) >= 0.9 ? 'high_confidence' : (spec.ai_confidence || 0) >= 0.7 ? 'needs_review' : 'invalid');
+        if (status === 'high_confidence') {
+            return {
+                label: 'High Confidence',
+                tone: 'border-success/25 bg-success/10 text-success',
+                rowTone: 'border-success/10 bg-success/5',
+                hint: 'Auto-filled from explicit drawing text',
+            };
+        }
+        if (status === 'needs_review') {
+            return {
+                label: 'Needs Review',
+                tone: 'border-warning/25 bg-warning/10 text-warning',
+                rowTone: 'border-warning/10 bg-warning/5',
+                hint: 'Check against the drawing before lock',
+            };
+        }
+        return {
+            label: 'Invalid',
+            tone: 'border-danger/25 bg-danger/10 text-danger',
+            rowTone: 'border-danger/15 bg-danger/5',
+            hint: 'Type a verified human value to continue',
+        };
+    };
+
+    const getHumanValue = (spec) => {
+        const isInvalid = spec.review_status ? spec.review_status === 'invalid' : (spec.ai_confidence || 0) < 0.7;
+        if (editedSpecs[spec.id] !== undefined) {
+            return editedSpecs[spec.id];
+        }
+        if (isInvalid) {
+            return spec.human_value || '';
+        }
+        return spec.human_value || spec.ai_value || '';
+    };
+
+    const reviewCounts = validationSummary?.review_counts || specs.reduce((counts, spec) => {
+        const status = spec.review_status || ((spec.ai_confidence || 0) >= 0.9 ? 'high_confidence' : (spec.ai_confidence || 0) >= 0.7 ? 'needs_review' : 'invalid');
+        if (status === 'high_confidence') counts.high_confidence += 1;
+        else if (status === 'needs_review') counts.medium_review += 1;
+        else counts.invalid += 1;
+        return counts;
+    }, { high_confidence: 0, medium_review: 0, invalid: 0 });
+
+    const rejectedCount = validationSummary?.rejected_fields?.length || 0;
+    const acceptedCount = validationSummary?.accepted_fields?.length || Math.max(0, specs.length - reviewCounts.invalid);
+
+    const confidenceLabel = (confidence) => {
+        if (confidence === null || confidence === undefined) return 'No score';
+        return `${Math.round(confidence * 100)}%`;
     };
     const aiReady = aiProviderStatus?.enabled === true;
     const visionReady = aiProviderStatus?.vision_enabled === true;
@@ -694,68 +774,120 @@ function StepAISpecs({
 
             {/* Specs table */}
             {specs.length > 0 ? (
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                        <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
-                            Extracted Specifications
+                <div className="space-y-4">
+                    {extractionMessage && (
+                        <div className="glass-card rounded-2xl border border-accent/20 px-4 py-3 text-xs leading-6 text-text-secondary">
+                            {extractionMessage}
                         </div>
-                        <span style={{
-                            fontSize: '10px', padding: '2px 8px', borderRadius: '10px',
-                            background: 'rgba(217,176,76,0.12)', color: 'var(--gold)', border: '1px solid rgba(217,176,76,0.2)',
-                        }}>
-                            {specs.filter((s) => s.is_confirmed).length}/{specs.length} confirmed
-                        </span>
+                    )}
+
+                    <div className="grid gap-3 md:grid-cols-4">
+                        <div className="glass-card rounded-2xl border border-success/20 px-4 py-4">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-success">High Confidence</p>
+                            <p className="mt-2 text-2xl font-display text-text-primary">{reviewCounts.high_confidence || 0}</p>
+                            <p className="mt-1 text-[11px] text-text-secondary">Ready to verify quickly</p>
+                        </div>
+                        <div className="glass-card rounded-2xl border border-warning/20 px-4 py-4">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-warning">Needs Review</p>
+                            <p className="mt-2 text-2xl font-display text-text-primary">{reviewCounts.medium_review || 0}</p>
+                            <p className="mt-1 text-[11px] text-text-secondary">Cross-check before lock</p>
+                        </div>
+                        <div className="glass-card rounded-2xl border border-danger/20 px-4 py-4">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-danger">Invalid</p>
+                            <p className="mt-2 text-2xl font-display text-text-primary">{reviewCounts.invalid || 0}</p>
+                            <p className="mt-1 text-[11px] text-text-secondary">Typed human value required</p>
+                        </div>
+                        <div className="glass-card rounded-2xl border border-border/70 px-4 py-4">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-secondary">Parser Result</p>
+                            <p className="mt-2 text-2xl font-display text-text-primary">{acceptedCount}</p>
+                            <p className="mt-1 text-[11px] text-text-secondary">
+                                {rejectedCount ? `${rejectedCount} values rejected by validation` : 'No rejected values'}
+                            </p>
+                        </div>
                     </div>
 
-                    {/* Table header */}
-                    <div style={{
-                        display: 'grid', gridTemplateColumns: '2fr 1.5fr 80px 1.5fr',
-                        gap: '8px', padding: '6px 10px', borderRadius: '6px 6px 0 0',
-                        background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.08)',
-                    }}>
-                        {['Parameter', 'AI Value', 'Conf.', 'Your Value'].map((h) => (
-                            <div key={h} style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>{h}</div>
-                        ))}
-                    </div>
-
-                    {/* Table rows */}
-                    <div style={{ border: '1px solid rgba(255,255,255,0.06)', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-                        {specs.map((spec, idx) => (
-                            <div key={spec.id} style={{
-                                display: 'grid', gridTemplateColumns: '2fr 1.5fr 80px 1.5fr',
-                                gap: '8px', padding: '8px 10px', alignItems: 'center',
-                                background: idx % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent',
-                                borderBottom: idx < specs.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
-                            }}>
-                                <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                    {spec.field_name.replace(/_/g, ' ')}
-                                    {spec.unit && <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}> ({spec.unit})</span>}
+                    <div className="glass-card rounded-2xl border border-border/70 p-4">
+                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">
+                                    AI + Human Validation Table
                                 </div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                                    {spec.ai_value || '—'}
-                                </div>
-                                <div style={{ fontSize: '12px', fontWeight: 700, color: confidenceColor(spec.ai_confidence) }}>
-                                    {spec.ai_confidence ? `${Math.round(spec.ai_confidence * 100)}%` : '—'}
-                                </div>
-                                <input
-                                    type="text"
-                                    defaultValue={spec.human_value || spec.ai_value || ''}
-                                    onChange={(e) => onSpecEdit(spec, e.target.value)}
-                                    placeholder={spec.ai_value || 'Enter value'}
-                                    style={{
-                                        background: spec.is_confirmed ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.05)',
-                                        border: `1px solid ${spec.is_confirmed ? 'rgba(52,211,153,0.3)' : 'rgba(255,255,255,0.1)'}`,
-                                        borderRadius: '6px', color: 'var(--text-primary)',
-                                        padding: '5px 8px', fontSize: '12px', fontFamily: 'monospace',
-                                        width: '100%', boxSizing: 'border-box',
-                                    }}
-                                />
+                                <p className="mt-2 text-xs leading-6 text-text-secondary">
+                                    Green rows can flow through. Amber rows should be checked against the drawing. Red rows must be typed manually before confirmation.
+                                </p>
                             </div>
-                        ))}
-                    </div>
+                            <span className="rounded-full border border-accent/20 bg-accent/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
+                                {specs.filter((s) => s.is_confirmed).length}/{specs.length} Confirmed
+                            </span>
+                        </div>
 
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-                        Edit any value in "Your Value" before you confirm and lock the job.
+                        <div className="grid grid-cols-[1.7fr_1.2fr_1fr_1.5fr] gap-3 rounded-t-2xl border border-border/70 bg-bg-hover/40 px-4 py-3 text-[10px] font-bold uppercase tracking-[0.16em] text-text-secondary">
+                            <div>Parameter</div>
+                            <div>AI Value</div>
+                            <div>Status</div>
+                            <div>Human Value</div>
+                        </div>
+
+                        <div className="overflow-hidden rounded-b-2xl border border-t-0 border-border/70">
+                            {specs.map((spec, idx) => {
+                                const reviewMeta = getReviewMeta(spec);
+                                const currentValue = getHumanValue(spec);
+                                const requiresHumanValue = reviewMeta.label === 'Invalid';
+
+                                return (
+                                    <div
+                                        key={spec.id}
+                                        className={`grid grid-cols-[1.7fr_1.2fr_1fr_1.5fr] gap-3 px-4 py-3 ${reviewMeta.rowTone} ${idx < specs.length - 1 ? 'border-b border-border/50' : ''}`}
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="text-xs font-semibold text-text-primary">
+                                                {spec.field_name.replace(/_/g, ' ')}
+                                            </div>
+                                            <div className="mt-1 text-[11px] text-text-muted">
+                                                {spec.unit ? `Unit: ${spec.unit}` : 'Unitless value'}
+                                            </div>
+                                        </div>
+
+                                        <div className="min-w-0 font-mono text-xs text-text-secondary">
+                                            <div>{spec.ai_value || '—'}</div>
+                                            <div className="mt-1 text-[11px] text-text-muted">{confidenceLabel(spec.ai_confidence)}</div>
+                                        </div>
+
+                                        <div className="min-w-0">
+                                            <div className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${reviewMeta.tone}`}>
+                                                {reviewMeta.label}
+                                            </div>
+                                            <div className="mt-2 text-[11px] leading-5 text-text-muted">
+                                                {reviewMeta.hint}
+                                            </div>
+                                        </div>
+
+                                        <div className="min-w-0">
+                                            <input
+                                                type="text"
+                                                value={currentValue}
+                                                onChange={(e) => onSpecEdit(spec, e.target.value)}
+                                                placeholder={requiresHumanValue ? 'Type verified value' : (spec.ai_value || 'Enter value')}
+                                                className="input-glass w-full rounded-xl px-3 py-2 text-xs font-mono"
+                                                style={{
+                                                    background: spec.is_confirmed ? 'rgba(52,211,153,0.08)' : requiresHumanValue ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.05)',
+                                                    borderColor: spec.is_confirmed ? 'rgba(52,211,153,0.28)' : requiresHumanValue ? 'rgba(248,113,113,0.24)' : 'rgba(255,255,255,0.1)',
+                                                }}
+                                            />
+                                            {requiresHumanValue && !currentValue.trim() && (
+                                                <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-danger">
+                                                    Required before confirmation
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <div className="mt-4 text-[11px] leading-6 text-text-secondary">
+                            Human verification stays mandatory for every row. Invalid OCR rows are blocked until you enter a verified value.
+                        </div>
                     </div>
                 </div>
             ) : (

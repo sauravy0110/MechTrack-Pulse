@@ -54,13 +54,25 @@ class AddSpecRequest(BaseModel):
     ai_confidence: float | None = Field(None, ge=0.0, le=1.0)
 
 
+def _review_status_from_confidence(ai_confidence: float | None) -> str:
+    confidence_value = float(ai_confidence or 0.0)
+    if confidence_value >= 0.9:
+        return "high_confidence"
+    if confidence_value >= 0.7:
+        return "needs_review"
+    return "invalid"
+
+
 def _spec_to_dict(spec: JobSpec) -> dict:
+    review_status = _review_status_from_confidence(spec.ai_confidence)
     return {
         "id": str(spec.id),
         "task_id": str(spec.task_id),
         "field_name": spec.field_name,
         "ai_value": spec.ai_value,
         "ai_confidence": spec.ai_confidence,
+        "review_status": review_status,
+        "requires_human_value": review_status == "invalid",
         "human_value": spec.human_value,
         "unit": spec.unit,
         "is_confirmed": spec.is_confirmed,
@@ -207,6 +219,21 @@ def confirm_all_specs(
 
     if not specs:
         raise HTTPException(status_code=400, detail="No specs to confirm. Extract specs first.")
+
+    blocking_specs = [
+        spec.field_name.replace("_", " ")
+        for spec in specs
+        if _review_status_from_confidence(spec.ai_confidence) == "invalid"
+        and not (spec.human_value and spec.human_value.strip())
+    ]
+    if blocking_specs:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "These low-confidence specs need a typed human value before confirmation: "
+                + ", ".join(blocking_specs)
+            ),
+        )
 
     for spec in specs:
         spec.is_confirmed = True
