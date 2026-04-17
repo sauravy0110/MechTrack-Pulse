@@ -23,6 +23,10 @@ const MATERIAL_OPTIONS = ['EN8', 'EN9', 'EN24', 'SS304', 'SS316', 'MS', 'Mild St
 const OPERATION_OPTIONS = ['Facing', 'Rough Turning', 'Finish Turning', 'Threading', 'Other'];
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'];
 
+function getClientUserId(client) {
+    return client?.id || client?.user_id || '';
+}
+
 function resolveMediaUrl(path) {
     if (!path) return '';
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -147,7 +151,7 @@ export default function JobCreationModal() {
                         send_email: newClient.send_email,
                     });
                     setCreatedClientCreds(creds);
-                    setSelectedClientId(creds.id);
+                    setSelectedClientId(getClientUserId(creds) || creds.client_profile_id || '');
                     addAlert(`Client "${creds.company_name}" created. Credentials ready.`, 'success');
                 } catch (e) {
                     setError(e.message);
@@ -598,12 +602,13 @@ function StepClient({ clientMode, setClientMode, selectedClientId, setSelectedCl
                     ) : (
                         <div className="grid gap-3">
                             {clients.map((client) => {
-                                const active = selectedClientId === client.id;
+                                const clientUserId = getClientUserId(client) || client.client_profile_id || '';
+                                const active = selectedClientId === clientUserId;
                                 return (
                                     <button
-                                        key={client.id}
+                                        key={clientUserId || client.client_id}
                                         type="button"
-                                        onClick={() => setSelectedClientId(client.id)}
+                                        onClick={() => setSelectedClientId(clientUserId)}
                                         className={`flex items-center gap-4 rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-success/30 bg-success/10' : 'border-border/70 bg-bg-hover/30 hover:border-accent/20 hover:bg-bg-hover/50'}`}
                                     >
                                         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(56,189,248,0.9),rgba(99,102,241,0.85))] text-sm font-bold text-white">

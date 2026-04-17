@@ -1131,6 +1131,13 @@ def update_cnc_fields_route(
     if request.drawing_url is not None:
         task.drawing_url = request.drawing_url
 
+    # A base task is created before CNC fields are attached. If it was assigned
+    # during creation, normalize it back to an explicit CNC-assigned state so
+    # the operator must start the job manually from the dashboard.
+    if task.assigned_to and task.status in {"idle", "queued", "in_progress", "paused", "delayed"}:
+        task.status = "assigned"
+        task.timer_started_at = None
+
     db.commit()
     return _task_to_response(task)
 
@@ -1313,6 +1320,45 @@ def start_cnc_workflow_route(
         current_user.company_id,
         task,
         message=f"CNC workflow started for '{task.title}'.",
+        severity="info",
+    )
+    return {"task": _task_to_response(task)}
+
+
+@router.post("/{task_id}/finish-cnc", status_code=status.HTTP_200_OK)
+def finish_cnc_workflow_route(
+    task_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Finish the operator run and move the CNC job into final inspection."""
+    task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
+    if current_user.role == "client":
+        raise HTTPException(status_code=403, detail="Clients cannot finish CNC workflows")
+    if not is_cnc_job(task):
+        raise HTTPException(status_code=400, detail="This action is available only for CNC jobs")
+    if not task.assigned_to:
+        raise HTTPException(status_code=400, detail="Assign an operator before finishing the CNC workflow")
+    if task.status in {"completed", "dispatched"}:
+        raise HTTPException(status_code=400, detail="Completed or dispatched CNC jobs cannot be finished again")
+    if task.timer_started_at is None:
+        raise HTTPException(status_code=400, detail="Start the CNC task before finishing it")
+
+    now = datetime.now(timezone.utc)
+    delta = now - task.timer_started_at
+    task.total_time_spent_seconds += max(int(delta.total_seconds()), 0)
+    task.timer_started_at = None
+    if task.status not in {"final_inspection", "completed", "dispatched"}:
+        task.status = "final_inspection"
+
+    db.commit()
+    db.refresh(task)
+    _broadcast_mes_task_update(
+        background_tasks,
+        current_user.company_id,
+        task,
+        message=f"CNC task '{task.title}' moved to final inspection.",
         severity="info",
     )
     return {"task": _task_to_response(task)}

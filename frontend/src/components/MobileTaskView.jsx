@@ -48,8 +48,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         return `${minutes}m`;
     };
     const formatStartedAt = (value) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Not started';
-    const canStartCnc = (task) => ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval'].includes(task.status);
-    const canFinishCnc = (task) => ['in_progress', 'qc_check'].includes(task.status);
+    const canStartCnc = (task) => ['created', 'planned', 'ready', 'assigned'].includes(task.status) && !task.timer_started_at;
+    const canFinishCnc = (task) => Boolean(task.timer_started_at) && !['completed', 'dispatched', 'final_inspection'].includes(task.status);
 
     const handleStatusUpdate = async (taskId, nextStatus) => {
         try { await updateTaskStatus(taskId, nextStatus); }
@@ -78,7 +78,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const handleFinishCncTask = async (task) => {
         setStartingTaskId(task.id);
         try {
-            const { data } = await api.post(`/tasks/${task.id}/ai-final-inspection`);
+            const { data } = await api.post(`/tasks/${task.id}/finish-cnc`);
             if (data?.task) {
                 useAppStore.getState().updateTask(data.task);
                 setSelectedTask(data.task);
@@ -86,7 +86,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                 setSelectedTask(task);
             }
             setExpandedTaskId(task.id);
-            addAlert('Final inspection started. Review the workflow below to complete the CNC job.', 'success');
+            addAlert('CNC task finished. Review final inspection in the workspace below.', 'success');
         } catch (error) {
             addAlert(error.response?.data?.detail || error.message || 'Unable to finish CNC task.', 'error');
         } finally {
@@ -247,9 +247,9 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                                         ) : null}
                                         <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
                                             {canStartCnc(task)
-                                                ? 'Start the CNC task here, then use the MES workflow controls below for setup, first-piece approval, production, QC, rework, dispatch, or completion.'
+                                                ? 'This job is assigned and ready. Start Task begins operator work and starts the timer.'
                                                 : canFinishCnc(task)
-                                                    ? 'Use Finish Task to move into final inspection, or open the workflow to continue production and QC steps.'
+                                                    ? 'Finish Task stops the timer and moves the job into final inspection. Open Workspace any time for detailed MES controls.'
                                                     : task.status === 'final_inspection'
                                                         ? 'This job is in final inspection. Open the workflow below to review the current MES status.'
                                                         : 'This CNC job follows the MES workflow. Open the workspace below to continue the process.'}

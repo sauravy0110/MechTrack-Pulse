@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.models.client import Client
 from app.models.task import Task
 from app.models.task_log import TaskLog
 from app.models.user import User
@@ -69,9 +70,21 @@ def _validate_client(
         return None, ""
 
     client = _get_company_user(db, company_id, client_id)
-    if not client or client.role != "client":
-        return None, "Client user not found in your company"
-    return client, ""
+    if client and client.role == "client":
+        return client, ""
+
+    # Backward-compatible fallback: some older UI flows may send the client
+    # profile UUID instead of the underlying user UUID.
+    client_profile = db.query(Client).filter(
+        Client.company_id == company_id,
+        Client.id == client_id,
+    ).first()
+    if client_profile:
+        client = _get_company_user(db, company_id, client_profile.user_id)
+        if client and client.role == "client":
+            return client, ""
+
+    return None, "Client user not found in your company"
 
 
 def _validate_operator_assignee(
