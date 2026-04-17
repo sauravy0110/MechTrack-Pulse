@@ -98,6 +98,9 @@ def _extract_error_message(body: str) -> str | None:
 
     if not isinstance(payload, dict):
         return None
+    top_level_message = payload.get("message")
+    if isinstance(top_level_message, str) and top_level_message.strip():
+        return top_level_message.strip()
     error_payload = payload.get("error")
     if not isinstance(error_payload, dict):
         return None
@@ -112,6 +115,50 @@ def _extract_error_message(body: str) -> str | None:
     return None
 
 
+def _error_requires_single_user_turn_retry(error: dict[str, Any] | None) -> bool:
+    if not error:
+        return False
+    message = str(error.get("message") or "").lower()
+    return "roles must alternate" in message or ("system" in message and "user" in message and "alternate" in message)
+
+
+def _build_vision_messages(
+    *,
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    image_url: str,
+    merge_system_into_user: bool = False,
+) -> list[dict[str, Any]]:
+    text_payload = json.dumps(user_payload, ensure_ascii=True)
+    if merge_system_into_user:
+        merged_text = (
+            "Follow these instructions exactly and return strict JSON only.\n\n"
+            f"{system_prompt}\n\n"
+            "User payload:\n"
+            f"{text_payload}"
+        )
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": merged_text},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            }
+        ]
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text_payload},
+                {"type": "image_url", "image_url": {"url": image_url}},
+            ],
+        },
+    ]
+
+
 def _send_chat_completion_result(
     *,
     model: str,
@@ -120,6 +167,7 @@ def _send_chat_completion_result(
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
     fallback_models: list[str] | None = None,
+    include_reasoning_fallback: bool = True,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if not openrouter_enabled():
         return None, {"type": "config", "message": "OPENROUTER_API_KEY is not configured"}
@@ -130,7 +178,7 @@ def _send_chat_completion_result(
         if cleaned_fallback and cleaned_fallback not in candidate_models:
             candidate_models.append(cleaned_fallback)
     fallback_model = _clean(settings.OPENROUTER_MODEL_REASONING)
-    if fallback_model and fallback_model not in candidate_models:
+    if include_reasoning_fallback and fallback_model and fallback_model not in candidate_models:
         candidate_models.append(fallback_model)
 
     headers = _headers()
@@ -191,6 +239,7 @@ def _send_chat_completion(
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
     fallback_models: list[str] | None = None,
+    include_reasoning_fallback: bool = True,
 ) -> dict[str, Any] | None:
     response, _error = _send_chat_completion_result(
         model=model,
@@ -199,6 +248,7 @@ def _send_chat_completion(
         max_tokens=max_tokens,
         response_format=response_format,
         fallback_models=fallback_models,
+        include_reasoning_fallback=include_reasoning_fallback,
     )
     return response
 
@@ -245,19 +295,15 @@ def _chat_json_with_image(
 
     response = _send_chat_completion(
         model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": json.dumps(user_payload, ensure_ascii=True)},
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                ],
-            },
-        ],
+        messages=_build_vision_messages(
+            system_prompt=system_prompt,
+            user_payload=user_payload,
+            image_url=image_url,
+        ),
         temperature=temperature,
         max_tokens=max_tokens,
         fallback_models=[FREE_MODELS_ROUTER],
+        include_reasoning_fallback=False,
     )
     if not response:
         return None
@@ -284,20 +330,31 @@ def _chat_json_with_image_result(
 
     response, error = _send_chat_completion_result(
         model=model,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": json.dumps(user_payload, ensure_ascii=True)},
-                    {"type": "image_url", "image_url": {"url": image_url}},
-                ],
-            },
-        ],
+        messages=_build_vision_messages(
+            system_prompt=system_prompt,
+            user_payload=user_payload,
+            image_url=image_url,
+        ),
         temperature=temperature,
         max_tokens=max_tokens,
         fallback_models=[FREE_MODELS_ROUTER],
+        include_reasoning_fallback=False,
     )
+    if not response and _error_requires_single_user_turn_retry(error):
+        response, retry_error = _send_chat_completion_result(
+            model=model,
+            messages=_build_vision_messages(
+                system_prompt=system_prompt,
+                user_payload=user_payload,
+                image_url=image_url,
+                merge_system_into_user=True,
+            ),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_models=[FREE_MODELS_ROUTER],
+            include_reasoning_fallback=False,
+        )
+        error = retry_error if not response else None
     if not response:
         return None, error
 
