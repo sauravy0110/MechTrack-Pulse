@@ -29,6 +29,7 @@ from app.schemas.owner import (
     UsageMetricResponse,
     WatchlistSummaryResponse,
 )
+from app.services.operator_service import sync_company_operator_states
 
 import pandas as pd
 import io
@@ -119,6 +120,7 @@ def update_company_profile(
 
 
 def get_business_overview(db: Session, company_id: UUID) -> OwnerBusinessOverviewResponse:
+    sync_company_operator_states(db, company_id)
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise ValueError("Company not found")

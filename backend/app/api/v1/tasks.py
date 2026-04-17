@@ -69,7 +69,12 @@ from app.models.dispatch_record import DispatchRecord
 from app.services.cnc_ai_service import get_rework_suggestion, analyze_setup_image, analyze_final_inspection
 from app.services.task_queue import dequeue_task, peek_queue, queue_size
 from app.services.ai_action_engine import evaluate_operator_load
-from app.services.operator_service import MAX_TASKS_PER_OPERATOR, find_best_operator
+from app.services.operator_service import (
+    MAX_TASKS_PER_OPERATOR,
+    build_operator_payload,
+    find_best_operator,
+    sync_operator_duty_state,
+)
 from app.core.dependencies import require_roles
 from app.services.mes_service import (
     build_process_snapshot,
@@ -127,26 +132,10 @@ def _task_to_response(task) -> TaskResponse:
     )
 
 
-def _operator_to_payload(operator: User) -> dict:
+def _operator_to_payload(db: Session, operator: User) -> dict:
     if operator is None:
         return {}
-
-    if not operator.is_on_duty:
-        status = "offline"
-    elif operator.current_task_count >= MAX_TASKS_PER_OPERATOR:
-        status = "busy"
-    else:
-        status = "available"
-
-    return {
-        "id": str(operator.id),
-        "full_name": operator.full_name,
-        "email": operator.email,
-        "is_on_duty": operator.is_on_duty,
-        "current_task_count": operator.current_task_count,
-        "last_active_at": operator.last_active_at,
-        "status": status,
-    }
+    return build_operator_payload(db, operator.company_id, operator)
 
 
 def _broadcast_mes_task_update(
@@ -250,7 +239,7 @@ async def create_task_route(
             background_tasks.add_task(
                 broadcast_operator_update,
                 current_user.company_id,
-                _operator_to_payload(operator),
+                _operator_to_payload(db, operator),
             )
 
     promoted_task = getattr(task, "_promoted_task", None)
@@ -450,7 +439,7 @@ async def update_task_status_route(
             background_tasks.add_task(
                 broadcast_operator_update,
                 current_user.company_id,
-                _operator_to_payload(operator),
+                _operator_to_payload(db, operator),
             )
     
     # ── Trigger AI Load Evaluation ──
@@ -521,7 +510,7 @@ async def assign_task_route(
             background_tasks.add_task(
                 broadcast_operator_update,
                 current_user.company_id,
-                _operator_to_payload(operator),
+                _operator_to_payload(db, operator),
             )
     
     # ── Trigger AI Load Evaluation ──
@@ -1218,7 +1207,7 @@ def mes_assign_route(
     if task.status not in {"ready", "assigned"} and not task.rework_flag:
         raise HTTPException(status_code=400, detail="Material validation must mark the job READY before assignment")
 
-    suggested_operator = find_best_operator(db, current_user.company_id)
+    suggested_operator = find_best_operator(db, current_user.company_id, priority=task.priority)
     suggested_machine = (
         db.query(Machine)
         .filter(
@@ -1282,7 +1271,7 @@ def mes_assign_route(
     return {
         "task": _task_to_response(task),
         "suggestions": {
-            "operator": _operator_to_payload(suggested_operator) if suggested_operator else None,
+            "operator": _operator_to_payload(db, suggested_operator) if suggested_operator else None,
             "machine": {
                 "id": str(suggested_machine.id),
                 "name": suggested_machine.name,

@@ -34,6 +34,12 @@ def migrate():
     print("=== CNC Shaft MES Migration ===\n")
 
     with engine.connect() as conn:
+        _run_step(
+            conn,
+            "CREATE EXTENSION IF NOT EXISTS pgcrypto;",
+            "   ✅ Ensured pgcrypto extension",
+            "   ⏩ pgcrypto",
+        )
 
         # ── 1. CNC columns on tasks ──────────────────────────────
         print("→ Patching tasks table with CNC fields…")

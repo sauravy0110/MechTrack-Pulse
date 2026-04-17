@@ -49,7 +49,7 @@ async def evaluate_operator_load(company_id: UUID) -> None:
             if not task:
                 continue
 
-            best_op = find_best_operator(db, company_id)
+            best_op = find_best_operator(db, company_id, priority=task.priority)
             if not best_op or best_op.id == old_op.id:
                 continue
 

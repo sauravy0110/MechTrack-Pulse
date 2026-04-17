@@ -115,6 +115,9 @@ def create_task(
     if error:
         return None, error
 
+    if assignee:
+        operator_service.sync_operator_duty_state(db, assignee)
+
     _, error = _validate_machine(db, company_id, machine_id)
     if error:
         return None, error
@@ -122,6 +125,13 @@ def create_task(
     _, error = _validate_client(db, company_id, client_id)
     if error:
         return None, error
+
+    auto_assignee = assignee
+    if auto_assignee is None and priority in {"high", "critical"}:
+        auto_assignee = operator_service.find_best_operator(db, company_id, priority=priority)
+        if auto_assignee:
+            assigned_to = auto_assignee.id
+            assignee = auto_assignee
 
     task = Task(
         company_id=company_id,
@@ -325,6 +335,7 @@ def assign_task(
     assignee, error = _validate_operator_assignee(db, company_id, assignee_id)
     if error:
         return None, error
+    operator_service.sync_operator_duty_state(db, assignee)
 
     old_assignee_id = task.assigned_to
     

@@ -43,6 +43,9 @@ _COLUMN_MIGRATIONS = [
     ("tasks", "deleted_at", "TIMESTAMPTZ"),
     ("tasks", "operation_type", "VARCHAR(100)"),
     ("tasks", "operation_other", "VARCHAR(255)"),
+    ("users", "duty_expires_at", "TIMESTAMPTZ"),
+    ("users", "owner_feedback_score", "DOUBLE PRECISION DEFAULT 3.0"),
+    ("users", "operator_feedback_score", "DOUBLE PRECISION DEFAULT 3.0"),
 ]
 
 

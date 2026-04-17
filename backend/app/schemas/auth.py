@@ -8,6 +8,7 @@ Keeps DB internals hidden from API consumers.
 """
 
 from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime
 
 
 # ── Login ────────────────────────────────────────────────────
@@ -54,6 +55,12 @@ class UserProfileResponse(BaseModel):
     company_id: str
     department: str | None = None
     phone: str | None = None
+    is_on_duty: bool = False
+    current_task_count: int = 0
+    duty_expires_at: datetime | None = None
+    owner_feedback_score: float = 3.0
+    operator_feedback_score: float = 3.0
+    skill_score: float | None = None
     must_change_password: bool
 
     model_config = {"from_attributes": True}

@@ -8,15 +8,16 @@ Endpoints:
   POST /api/v1/auth/change-password → Change password
 """
 
-import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
 from datetime import datetime, timezone
+import logging
 
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from app.api.v1.websocket import broadcast_operator_update
 from app.core.dependencies import get_current_user
 from app.core.rate_limit import limiter
 from app.core.redis import redis_client
-from app.core.security import create_access_token, decode_token
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
@@ -34,10 +35,15 @@ from app.services.auth_service import (
     create_user_tokens,
 )
 from app.services.email_service import send_password_reset_email
+from app.services.operator_service import (
+    activate_operator_for_login,
+    build_operator_payload,
+    get_operator_skill_snapshot,
+    sync_operator_duty_state,
+)
 from app.core.security import (
-    create_access_token, 
-    decode_token, 
     create_password_reset_token, 
+    decode_token,
     verify_password_reset_token,
     validate_password_strength,
     hash_password
@@ -54,7 +60,12 @@ logger = logging.getLogger("app.auth")
 # onboarding. A stricter 5/minute per-IP limit caused legitimate same-network
 # first-login flows to trip 429s, so this route uses a higher cap.
 @limiter.limit("30/minute")
-def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_db)):
+def login(
+    request: Request,
+    login_data: LoginRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
     Authenticate user and return JWT tokens.
 
@@ -67,6 +78,14 @@ def login(request: Request, login_data: LoginRequest, db: Session = Depends(get_
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=error,
+        )
+
+    user, duty_changed = activate_operator_for_login(db, user)
+    if duty_changed:
+        background_tasks.add_task(
+            broadcast_operator_update,
+            user.company_id,
+            build_operator_payload(db, user.company_id, user),
         )
 
     tokens = create_user_tokens(user)
@@ -129,11 +148,24 @@ def refresh_token(request: Request, refresh_data: RefreshRequest, db: Session = 
 # ── Current User Profile ─────────────────────────────────────
 
 @router.get("/me", response_model=UserProfileResponse)
-def get_me(current_user: User = Depends(get_current_user)):
+def get_me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
     Return the currently authenticated user's profile.
     Used by frontend to determine role-based UI rendering.
     """
+    sync_operator_duty_state(db, current_user, commit=True)
+    skill_score = None
+    if current_user.role == "operator":
+        skill_score = get_operator_skill_snapshot(
+            db,
+            current_user.company_id,
+            current_user,
+            persist_score=True,
+        )["skill_score"]
+
     return UserProfileResponse(
         id=str(current_user.id),
         email=current_user.email,
@@ -142,6 +174,12 @@ def get_me(current_user: User = Depends(get_current_user)):
         company_id=str(current_user.company_id),
         department=current_user.department,
         phone=current_user.phone,
+        is_on_duty=current_user.is_on_duty,
+        current_task_count=current_user.current_task_count,
+        duty_expires_at=current_user.duty_expires_at,
+        owner_feedback_score=float(current_user.owner_feedback_score or 3.0),
+        operator_feedback_score=float(current_user.operator_feedback_score or 3.0),
+        skill_score=skill_score,
         must_change_password=current_user.must_change_password,
     )
 

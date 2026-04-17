@@ -37,6 +37,10 @@ function normalizeOperator(operator) {
     return {
         ...operator,
         current_task_count: operator?.current_task_count ?? 0,
+        duty_expires_at: operator?.duty_expires_at ?? null,
+        owner_feedback_score: operator?.owner_feedback_score ?? 3,
+        operator_feedback_score: operator?.operator_feedback_score ?? 3,
+        skill_score: operator?.skill_score ?? null,
         status: operator?.status || deriveOperatorStatus(operator),
     };
 }
@@ -50,6 +54,10 @@ function normalizeUser(user) {
         is_on_duty: user?.is_on_duty ?? false,
         current_task_count: user?.current_task_count ?? 0,
         last_active_at: user?.last_active_at ?? null,
+        duty_expires_at: user?.duty_expires_at ?? null,
+        owner_feedback_score: user?.owner_feedback_score ?? 3,
+        operator_feedback_score: user?.operator_feedback_score ?? 3,
+        skill_score: user?.skill_score ?? null,
     };
 }
 

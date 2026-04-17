@@ -21,6 +21,7 @@ from app.models.machine import Machine
 from app.models.operator_score import OperatorScore
 from app.models.ai_insight import AIInsight
 from app.services.mes_service import MES_ACTIVE_STATUSES
+from app.services.operator_service import get_operator_skill_snapshot, sync_company_operator_states
 
 router = APIRouter()
 
@@ -35,6 +36,7 @@ def get_dashboard(
     Returns task counts, machine status, user stats, and recent insights.
     """
     company_id = current_user.company_id
+    sync_company_operator_states(db, company_id)
 
     # Task metrics
     total_tasks = db.query(Task).filter(Task.company_id == company_id).count()
@@ -118,13 +120,7 @@ def get_operator_leaderboard(
     Returns ranked operators by efficiency score.
     """
     company_id = current_user.company_id
-
-    # Get latest scores for each operator
-    operators = db.query(User).filter(
-        User.company_id == company_id,
-        User.role == "operator",
-        User.is_active == True,
-    ).all()
+    operators = sync_company_operator_states(db, company_id)
 
     leaderboard = []
     for op in operators:
@@ -145,6 +141,7 @@ def get_operator_leaderboard(
             "delay_rate": latest_score.delay_rate if latest_score else 0,
             "tasks_completed": latest_score.tasks_completed if latest_score else 0,
             "active_tasks": active_tasks,
+            "skill_score": get_operator_skill_snapshot(db, company_id, op, persist_score=True)["skill_score"],
         })
 
     # Sort by efficiency descending
@@ -163,6 +160,7 @@ def get_task_analytics(
     Priority distribution, status breakdown, delay trends.
     """
     company_id = current_user.company_id
+    sync_company_operator_states(db, company_id)
 
     # Status breakdown
     status_counts = {}

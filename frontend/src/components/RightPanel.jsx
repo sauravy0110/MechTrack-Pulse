@@ -11,6 +11,7 @@ import ReworkAlertBanner from './ReworkAlertBanner';
 const PRIORITY_COLORS = { critical: 'text-danger', high: 'text-warning', medium: 'text-accent', low: 'text-text-muted' };
 const FILTER_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'delayed', label: 'Delayed' }];
 const SORT_OPTIONS = [{ value: 'priority', label: 'Priority' }, { value: 'time', label: 'Time' }];
+const MAX_OPERATOR_QUEUE = 5;
 
 const WORKFLOW_ACTIONS = {
     idle: [{ label: 'Start', status: 'in_progress', tone: 'btn-primary' }],
@@ -28,6 +29,27 @@ const WORKFLOW_ACTIONS = {
 function formatStatus(status) { return status.replace('_', ' '); }
 function isCNCJob(task) {
     return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+}
+function isPriorityTask(task) {
+    return task?.priority === 'high' || task?.priority === 'critical';
+}
+function compareOperatorsForTask(a, b, task) {
+    const aAvailable = a.is_on_duty && (a.current_task_count || 0) < MAX_OPERATOR_QUEUE ? 0 : 1;
+    const bAvailable = b.is_on_duty && (b.current_task_count || 0) < MAX_OPERATOR_QUEUE ? 0 : 1;
+    if (aAvailable !== bAvailable) return aAvailable - bAvailable;
+
+    if (isPriorityTask(task)) {
+        const skillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+        if (skillDiff !== 0) return skillDiff;
+    }
+
+    const queueDiff = (a.current_task_count || 0) - (b.current_task_count || 0);
+    if (queueDiff !== 0) return queueDiff;
+
+    const fallbackSkillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+    if (fallbackSkillDiff !== 0) return fallbackSkillDiff;
+
+    return a.full_name.localeCompare(b.full_name);
 }
 
 const RightPanel = memo(function RightPanel({ embedded = false }) {
@@ -73,25 +95,22 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const operatorById = useMemo(() => Object.fromEntries(operators.map((o) => [o.id, o])), [operators]);
 
     const recommendedOperatorId = useMemo(() => {
-        return operators.filter((o) => o.is_on_duty && o.current_task_count < 5)
-            .sort((a, b) => { const d = (a.current_task_count || 0) - (b.current_task_count || 0); return d !== 0 ? d : a.full_name.localeCompare(b.full_name); })[0]?.id || '';
-    }, [operators]);
+        return operators
+            .filter((o) => o.is_on_duty && (o.current_task_count || 0) < MAX_OPERATOR_QUEUE)
+            .sort((a, b) => compareOperatorsForTask(a, b, selectedTask))
+            [0]?.id || '';
+    }, [operators, selectedTask]);
 
     const getOperatorOptions = (task) => {
-        return [...operators].sort((a, b) => {
-            const aA = a.is_on_duty && a.current_task_count < 5 ? 0 : 1;
-            const bA = b.is_on_duty && b.current_task_count < 5 ? 0 : 1;
-            if (aA !== bA) return aA - bA;
-            const d = (a.current_task_count || 0) - (b.current_task_count || 0);
-            return d !== 0 ? d : a.full_name.localeCompare(b.full_name);
-        }).map((o) => {
+        return [...operators].sort((a, b) => compareOperatorsForTask(a, b, task)).map((o) => {
             const isCurrentAssignee = task.assigned_to && o.id === task.assigned_to;
-            const isAvailable = o.is_on_duty && o.current_task_count < 5;
+            const isAvailable = o.is_on_duty && (o.current_task_count || 0) < MAX_OPERATOR_QUEUE;
             const disabled = !isCurrentAssignee && !isAvailable;
-            const workload = `${o.current_task_count || 0}/5`;
+            const workload = `${o.current_task_count || 0}/${MAX_OPERATOR_QUEUE}`;
             const recommendation = o.id === recommendedOperatorId && isAvailable ? ' ★' : '';
-            const availabilityLabel = !o.is_on_duty ? ' Offline' : (o.current_task_count || 0) >= 5 ? ' Full' : o.status === 'available' ? ' Available' : ' Busy';
-            return { ...o, disabled, label: `${o.full_name} (${workload})${availabilityLabel}${recommendation}` };
+            const availabilityLabel = !o.is_on_duty ? ' Offline' : (o.current_task_count || 0) >= MAX_OPERATOR_QUEUE ? ' Full' : o.status === 'available' ? ' Available' : ' Busy';
+            const skillLabel = o.skill_score != null ? ` • Skill ${Math.round(o.skill_score)}` : '';
+            return { ...o, disabled, label: `${o.full_name} (${workload})${availabilityLabel}${skillLabel}${recommendation}` };
         });
     };
 

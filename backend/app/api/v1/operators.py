@@ -30,12 +30,11 @@ async def toggle_duty(
     updated = operator_service.toggle_duty(db, current_user)
 
     # Broadcast to all connected clients
-    background_tasks.add_task(broadcast_operator_update, current_user.company_id, {
-        "id": str(updated.id),
-        "full_name": updated.full_name,
-        "is_on_duty": updated.is_on_duty,
-        "current_task_count": updated.current_task_count,
-    })
+    background_tasks.add_task(
+        broadcast_operator_update,
+        current_user.company_id,
+        operator_service.build_operator_payload(db, current_user.company_id, updated),
+    )
 
     return {
         "is_on_duty": updated.is_on_duty,
@@ -57,23 +56,6 @@ def get_operator_status(
     """
     operators = operator_service.get_operators(db, current_user.company_id)
     return [
-        {
-            "id": str(op.id),
-            "full_name": op.full_name,
-            "email": op.email,
-            "is_on_duty": op.is_on_duty,
-            "current_task_count": op.current_task_count,
-            "last_active_at": str(op.last_active_at) if op.last_active_at else None,
-            "status": _derive_status(op),
-        }
+        operator_service.build_operator_payload(db, current_user.company_id, op)
         for op in operators
     ]
-
-
-def _derive_status(op) -> str:
-    """Derive display status: Available / Busy / Offline."""
-    if not op.is_on_duty:
-        return "offline"
-    if op.current_task_count >= operator_service.MAX_TASKS_PER_OPERATOR:
-        return "busy"
-    return "available"

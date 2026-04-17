@@ -14,6 +14,7 @@ const CNC_STATUSES = new Set([
     'final_inspection',
     'dispatched',
 ]);
+const MAX_OPERATOR_QUEUE = 5;
 
 function parseMeasurements(text) {
     return text
@@ -47,6 +48,26 @@ function StatPill({ label, value, tone = 'text-text-primary' }) {
             <p className={`mt-1 text-sm font-semibold ${tone}`}>{value}</p>
         </div>
     );
+}
+
+function compareOperatorsForAssignment(a, b, taskPriority) {
+    const aAvailable = a.is_on_duty && (a.current_task_count || 0) < MAX_OPERATOR_QUEUE ? 0 : 1;
+    const bAvailable = b.is_on_duty && (b.current_task_count || 0) < MAX_OPERATOR_QUEUE ? 0 : 1;
+    if (aAvailable !== bAvailable) return aAvailable - bAvailable;
+
+    const isPriorityTask = taskPriority === 'high' || taskPriority === 'critical';
+    if (isPriorityTask) {
+        const skillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+        if (skillDiff !== 0) return skillDiff;
+    }
+
+    const queueDiff = (a.current_task_count || 0) - (b.current_task_count || 0);
+    if (queueDiff !== 0) return queueDiff;
+
+    const fallbackSkillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+    if (fallbackSkillDiff !== 0) return fallbackSkillDiff;
+
+    return a.full_name.localeCompare(b.full_name);
 }
 
 export default function MESStageWorkspace({ task, role, mesSummary, onRefresh }) {
@@ -92,8 +113,10 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
     }, [task?.id, task?.material_type, task?.material_batch, task?.assigned_to, task?.machine_id]);
 
     const operatorOptions = useMemo(
-        () => operators.filter((operator) => operator.is_on_duty && (operator.current_task_count || 0) < 5),
-        [operators]
+        () => operators
+            .filter((operator) => operator.is_on_duty && (operator.current_task_count || 0) < MAX_OPERATOR_QUEUE)
+            .sort((a, b) => compareOperatorsForAssignment(a, b, task?.priority)),
+        [operators, task?.priority]
     );
 
     if (!isCNCJob) return null;
@@ -158,7 +181,9 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
                     <select value={assignOperatorId} onChange={(e) => setAssignOperatorId(e.target.value)} className="input-glass w-full rounded-xl px-4 py-3 text-sm">
                         <option value="">Select operator</option>
                         {operatorOptions.map((operator) => (
-                            <option key={operator.id} value={operator.id}>{operator.full_name}</option>
+                            <option key={operator.id} value={operator.id}>
+                                {`${operator.full_name} (${operator.current_task_count || 0}/${MAX_OPERATOR_QUEUE})${operator.skill_score != null ? ` • Skill ${Math.round(operator.skill_score)}` : ''}`}
+                            </option>
                         ))}
                     </select>
                     <select value={assignMachineId} onChange={(e) => setAssignMachineId(e.target.value)} className="input-glass w-full rounded-xl px-4 py-3 text-sm">

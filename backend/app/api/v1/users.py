@@ -42,11 +42,22 @@ from app.services.user_service import (
     remove_user,
     update_user,
 )
+from app.services.operator_service import get_operator_skill_snapshot, sync_company_operator_states, sync_operator_duty_state
 
 router = APIRouter()
 
 
-def _user_to_response(user: User) -> UserResponse:
+def _user_to_response(db: Session, user: User) -> UserResponse:
+    if user.role == "operator":
+        sync_operator_duty_state(db, user)
+    skill_score = None
+    if user.role == "operator":
+        skill_score = get_operator_skill_snapshot(
+            db=db,
+            company_id=user.company_id,
+            operator=user,
+            persist_score=True,
+        )["skill_score"]
     return UserResponse(
         id=str(user.id),
         email=user.email,
@@ -58,6 +69,10 @@ def _user_to_response(user: User) -> UserResponse:
         is_on_duty=user.is_on_duty,
         current_task_count=user.current_task_count,
         last_active_at=user.last_active_at,
+        duty_expires_at=user.duty_expires_at,
+        owner_feedback_score=float(user.owner_feedback_score or 3.0),
+        operator_feedback_score=float(user.operator_feedback_score or 3.0),
+        skill_score=skill_score,
         must_change_password=user.must_change_password,
         last_login_at=user.last_login_at,
         created_at=user.created_at,
@@ -109,7 +124,7 @@ def create_user_route(
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
-        _user_to_response(user).model_dump(),
+        _user_to_response(db, user).model_dump(),
     )
 
     return CreateUserResponse(
@@ -139,7 +154,8 @@ def list_users_route(
         role_filter=role,
         active_only=not include_inactive,
     )
-    return [_user_to_response(u) for u in users]
+    sync_company_operator_states(db, current_user.company_id)
+    return [_user_to_response(db, u) for u in users]
 
 
 # ── Get User Detail ──────────────────────────────────────────
@@ -155,7 +171,7 @@ def get_user_route(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return _user_to_response(user)
+    return _user_to_response(db, user)
 
 
 # ── Update User ──────────────────────────────────────────────
@@ -187,10 +203,10 @@ def update_user_route(
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
-        _user_to_response(user).model_dump(),
+        _user_to_response(db, user).model_dump(),
     )
 
-    return _user_to_response(user)
+    return _user_to_response(db, user)
 
 
 # ── Deactivate User ─────────────────────────────────────────
@@ -224,7 +240,7 @@ def deactivate_user_route(
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
-        _user_to_response(user).model_dump(),
+        _user_to_response(db, user).model_dump(),
     )
     return {"message": message}
 
@@ -256,9 +272,9 @@ def reactivate_user_route(
     background_tasks.add_task(
         broadcast_user_update,
         current_user.company_id,
-        _user_to_response(user).model_dump(),
+        _user_to_response(db, user).model_dump(),
     )
-    return _user_to_response(user)
+    return _user_to_response(db, user)
 
 
 # ── Permanently Remove User ─────────────────────────────────

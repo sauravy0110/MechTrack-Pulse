@@ -25,6 +25,7 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -76,6 +77,22 @@ class User(Base):
     last_active_at = Column(
         DateTime(timezone=True), nullable=True,
         doc="Last time operator toggled duty or completed a task",
+    )
+    duty_expires_at = Column(
+        DateTime(timezone=True), nullable=True,
+        doc="Automatic on-duty expiry based on active shift or login fallback window",
+    )
+    owner_feedback_score = Column(
+        Float,
+        nullable=False,
+        default=3.0,
+        doc="Owner feedback score out of 5 used in operator skill scoring",
+    )
+    operator_feedback_score = Column(
+        Float,
+        nullable=False,
+        default=3.0,
+        doc="Peer/self operator feedback score out of 5 used in operator skill scoring",
     )
 
     # ── Account Status ───────────────────────────────────────

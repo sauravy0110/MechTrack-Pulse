@@ -45,6 +45,10 @@ class UserResponse(BaseModel):
     is_on_duty: bool = False
     current_task_count: int = 0
     last_active_at: datetime | None = None
+    duty_expires_at: datetime | None = None
+    owner_feedback_score: float = 3.0
+    operator_feedback_score: float = 3.0
+    skill_score: float | None = None
     must_change_password: bool
     last_login_at: datetime | None = None
     created_at: datetime
@@ -60,3 +64,5 @@ class UpdateUserRequest(BaseModel):
     phone: str | None = Field(None, max_length=15)
     role: str | None = Field(None, pattern="^(supervisor|operator|client)$")
     is_active: bool | None = None
+    owner_feedback_score: float | None = Field(None, ge=0.0, le=5.0)
+    operator_feedback_score: float | None = Field(None, ge=0.0, le=5.0)
