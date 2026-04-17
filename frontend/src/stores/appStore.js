@@ -138,9 +138,12 @@ const useAppStore = create((set, get) => ({
     isCreateTaskModalOpen: false,
     isAddUserModalOpen: false,
     isGlobalAIModalOpen: false,
+    isEditTaskModalOpen: false,
+    editingTask: null,
     createTaskMachineId: '',
     taskFilter: 'all',
     taskSort: 'time',
+    updatingTaskDetails: false,
 
     // ── Fetchers ────────────────────────────────────────
     fetchMachines: async () => {
@@ -250,6 +253,13 @@ const useAppStore = create((set, get) => ({
         ]);
     },
 
+    refreshTaskSurfaces: async () => {
+        await Promise.all([
+            get().fetchDashboard(),
+            shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
+        ]);
+    },
+
     // ── Operators ───────────────────────────────────────
     operators: [],
     fetchOperators: async () => {
@@ -321,6 +331,8 @@ const useAppStore = create((set, get) => ({
     closeAddUserModal: () => set({ isAddUserModalOpen: false }),
     openGlobalAIModal: () => set({ isGlobalAIModalOpen: true }),
     closeGlobalAIModal: () => set({ isGlobalAIModalOpen: false }),
+    openEditTaskModal: (task) => set({ isEditTaskModalOpen: true, editingTask: task || null }),
+    closeEditTaskModal: () => set({ isEditTaskModalOpen: false, editingTask: null }),
     setTaskFilter: (taskFilter) => set({ taskFilter }),
     setTaskSort: (taskSort) => set({ taskSort }),
     setSelectedMachine: (machine) => set((state) => ({
@@ -350,6 +362,21 @@ const useAppStore = create((set, get) => ({
     updateTask: (updatedTask) => {
         set((state) => {
             const oldTask = state.tasks.find((t) => t.id === updatedTask.id);
+            const nextSelectedTask = state.selectedTask?.id === updatedTask.id
+                ? { ...state.selectedTask, ...updatedTask }
+                : state.selectedTask;
+            const nextEditingTask = state.editingTask?.id === updatedTask.id
+                ? { ...state.editingTask, ...updatedTask }
+                : state.editingTask;
+            const selectedMachine = (() => {
+                if (!nextSelectedTask || nextSelectedTask.id !== updatedTask.id) {
+                    return state.selectedMachine;
+                }
+                if (!updatedTask.machine_id) {
+                    return null;
+                }
+                return state.machines.find((machine) => machine.id === updatedTask.machine_id) || state.selectedMachine;
+            })();
             // Trigger alert if task just became delayed
             if (oldTask && oldTask.status !== 'delayed' && updatedTask.status === 'delayed') {
                 get().addAlert(`Task "${updatedTask.title}" was delayed.`, 'error');
@@ -365,9 +392,9 @@ const useAppStore = create((set, get) => ({
                         t.id === updatedTask.id ? { ...t, ...updatedTask } : t
                     )
                     : [updatedTask, ...state.tasks],
-                selectedTask: state.selectedTask?.id === updatedTask.id
-                    ? { ...state.selectedTask, ...updatedTask }
-                    : state.selectedTask,
+                selectedTask: nextSelectedTask,
+                editingTask: nextEditingTask,
+                selectedMachine,
             };
         });
     },
@@ -548,10 +575,7 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`Task "${data.title}" created successfully.`, 'success');
-            await Promise.all([
-                get().fetchDashboard(),
-                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
-            ]);
+            await get().refreshTaskSurfaces();
             return data;
         } catch (error) {
             set({ creatingTask: false });
@@ -567,9 +591,8 @@ const useAppStore = create((set, get) => ({
             get().updateTask(data);
             get().addAlert(`Task "${data.title}" assigned successfully.`, 'success');
             await Promise.all([
-                get().fetchDashboard(),
+                get().refreshTaskSurfaces(),
                 get().fetchOperators(),
-                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
             ]);
             return data;
         } catch (error) {
@@ -584,13 +607,27 @@ const useAppStore = create((set, get) => ({
             });
             get().updateTask(data);
             await Promise.all([
-                get().fetchDashboard(),
+                get().refreshTaskSurfaces(),
                 get().fetchOperators(),
-                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
             ]);
             return data;
         } catch (error) {
             throw new Error(getApiErrorMessage(error, 'Unable to update task status right now.'));
+        }
+    },
+
+    updateTaskDetails: async (taskId, payload) => {
+        set({ updatingTaskDetails: true });
+        try {
+            const { data } = await api.patch(`/tasks/${taskId}`, payload);
+            get().updateTask(data);
+            get().addAlert(`Task "${data.title}" updated successfully.`, 'success');
+            await get().refreshTaskSurfaces();
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to update task details right now.'));
+        } finally {
+            set({ updatingTaskDetails: false });
         }
     },
 
@@ -751,10 +788,7 @@ const useAppStore = create((set, get) => ({
             }));
 
             get().addAlert(`Job "${data.title}" created. Now extract drawing specs.`, 'success');
-            await Promise.all([
-                get().fetchDashboard(),
-                shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
-            ]);
+            await get().refreshTaskSurfaces();
             return data;
         } catch (error) {
             set({ creatingTask: false });
@@ -971,9 +1005,13 @@ const useAppStore = create((set, get) => ({
             set((state) => ({
                 tasks: state.tasks.filter((t) => t.id !== taskId),
                 selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask,
+                isEditTaskModalOpen: state.editingTask?.id === taskId ? false : state.isEditTaskModalOpen,
+                editingTask: state.editingTask?.id === taskId ? null : state.editingTask,
+                jobSpecs: Object.fromEntries(Object.entries(state.jobSpecs).filter(([key]) => key !== taskId)),
+                jobProcesses: Object.fromEntries(Object.entries(state.jobProcesses).filter(([key]) => key !== taskId)),
             }));
             get().addAlert('Task deleted successfully.', 'success');
-            await get().fetchDashboard();
+            await get().refreshTaskSurfaces();
         } catch (error) {
             get().addAlert(getApiErrorMessage(error, 'Unable to delete task.'), 'error');
             throw error;
@@ -985,6 +1023,10 @@ const useAppStore = create((set, get) => ({
         set((state) => ({
             tasks: state.tasks.filter((t) => t.id !== taskId),
             selectedTask: state.selectedTask?.id === taskId ? null : state.selectedTask,
+            isEditTaskModalOpen: state.editingTask?.id === taskId ? false : state.isEditTaskModalOpen,
+            editingTask: state.editingTask?.id === taskId ? null : state.editingTask,
+            jobSpecs: Object.fromEntries(Object.entries(state.jobSpecs).filter(([key]) => key !== taskId)),
+            jobProcesses: Object.fromEntries(Object.entries(state.jobProcesses).filter(([key]) => key !== taskId)),
         }));
     },
 

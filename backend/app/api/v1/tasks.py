@@ -318,6 +318,7 @@ def get_task_route(
 def update_task_route(
     task_id: UUID,
     request: UpdateTaskRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(RequirePermission(Permission.UPDATE_TASK)),
 ):
@@ -336,7 +337,13 @@ def update_task_route(
         details={"fields": list(updates.keys())},
     )
     db.commit()
-    return _task_to_response(task)
+    response = _task_to_response(task)
+    background_tasks.add_task(
+        evaluate_operator_load,
+        current_user.company_id,
+    )
+    _broadcast_mes_task_update(background_tasks, current_user.company_id, task)
+    return response
 
 
 # ── Delete Task ──────────────────────────────────────────────

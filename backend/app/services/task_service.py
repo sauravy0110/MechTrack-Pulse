@@ -399,11 +399,17 @@ def update_task(
         return None, "Task not found"
 
     # Handle status separately via transition validation
-    if "status" in updates and updates["status"]:
-        return update_task_status(db, company_id, task_id, updates.pop("status"), user_id)
+    if "status" in updates:
+        if updates["status"]:
+            return update_task_status(db, company_id, task_id, updates.pop("status"), user_id)
+        updates.pop("status")
 
     if "assigned_to" in updates and updates["assigned_to"] != task.assigned_to:
         return None, "Use the assignment endpoint to change task assignee"
+
+    for required_field, label in {"title": "Title", "priority": "Priority"}.items():
+        if required_field in updates and updates[required_field] is None:
+            return None, f"{label} cannot be empty"
 
     if "machine_id" in updates:
         _, error = _validate_machine(db, company_id, updates["machine_id"])
@@ -415,8 +421,24 @@ def update_task(
         if error:
             return None, error
 
+    cnc_fields = {
+        "part_name",
+        "material_type",
+        "material_batch",
+        "operation_type",
+        "operation_other",
+        "drawing_url",
+    }
+    if task.is_locked and any(field in updates for field in cnc_fields):
+        return None, "Job is locked — CNC fields cannot be edited"
+
+    if "operation_type" in updates and updates["operation_type"] != "Other":
+        updates["operation_other"] = None
+    elif "operation_other" in updates and task.operation_type != "Other":
+        updates["operation_other"] = None
+
     for field, value in updates.items():
-        if value is not None and hasattr(task, field):
+        if hasattr(task, field):
             setattr(task, field, value)
 
     log = TaskLog(

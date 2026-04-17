@@ -33,6 +33,12 @@ class UpdateTaskRequest(BaseModel):
     client_id: UUID | None = None
     machine_id: UUID | None = None
     estimated_completion: datetime | None = None
+    part_name: str | None = Field(None, max_length=255)
+    material_type: str | None = Field(None, max_length=100)
+    material_batch: str | None = Field(None, max_length=100)
+    operation_type: str | None = Field(None, max_length=100)
+    operation_other: str | None = Field(None, max_length=255)
+    drawing_url: str | None = Field(None, max_length=512)
 
 
 # ── Task Response ────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { CheckCircle2, AlertTriangle, Play, MoreVertical, ChevronDown, Clock3 } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Play, ChevronDown, Clock3, Pencil, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
@@ -16,6 +16,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const machines = useAppStore((state) => state.machines);
     const updateTaskStatus = useAppStore((state) => state.updateTaskStatus);
     const openJobCreationModal = useAppStore((state) => state.openJobCreationModal);
+    const openEditTaskModal = useAppStore((state) => state.openEditTaskModal);
+    const deleteTask = useAppStore((state) => state.deleteTask);
     const addAlert = useAppStore((state) => state.addAlert);
     const taskFilter = useAppStore((state) => state.taskFilter);
     const taskSort = useAppStore((state) => state.taskSort);
@@ -24,9 +26,12 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const setSelectedTask = useAppStore((state) => state.setSelectedTask);
     const userRole = useAuthStore((state) => state.user?.role);
     const [expandedTaskId, setExpandedTaskId] = useState('');
+    const [deletingTaskId, setDeletingTaskId] = useState('');
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
+    const canEditTask = userRole === 'owner' || userRole === 'supervisor';
+    const canDeleteTask = userRole === 'owner' || userRole === 'supervisor';
     const canControlWorkflow = userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator';
 
     const getMachineName = (id) => machines.find((m) => m.id === id)?.name || 'Unassigned Machine';
@@ -53,6 +58,21 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
 
     const openTaskCreation = () => {
         openJobCreationModal();
+    };
+
+    const handleDeleteTask = async (task) => {
+        if (!confirm(`Permanently delete "${task.title}"? This will remove all related data.`)) {
+            return;
+        }
+
+        setDeletingTaskId(task.id);
+        try {
+            await deleteTask(task.id);
+        } catch (error) {
+            addAlert(error.message || 'Unable to delete task.', 'error');
+        } finally {
+            setDeletingTaskId('');
+        }
     };
 
     const wrapperClass = embedded
@@ -98,7 +118,34 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                                     : task.priority === 'high' ? 'bg-warning/10 text-warning border-warning/30'
                                     : 'bg-accent/10 text-accent border-accent/30'
                                 }`}>{task.priority} Priority</span>
-                                <button className="text-text-muted p-1 hover:text-text-primary transition-colors"><MoreVertical size={18} /></button>
+                                {(canEditTask || canDeleteTask) ? (
+                                    <div className="flex items-center gap-2">
+                                        {canEditTask && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setSelectedTask(task);
+                                                    openEditTaskModal(task);
+                                                }}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-accent/20 bg-accent/8 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent transition hover:bg-accent/15"
+                                            >
+                                                <Pencil size={12} />
+                                                Edit
+                                            </button>
+                                        )}
+                                        {canDeleteTask && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteTask(task)}
+                                                disabled={deletingTaskId === task.id}
+                                                className="inline-flex items-center gap-1.5 rounded-full border border-danger/20 bg-danger/8 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-danger transition hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <Trash2 size={12} />
+                                                {deletingTaskId === task.id ? 'Deleting' : 'Delete'}
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : null}
                             </div>
                             <h3 className="text-lg font-bold text-text-primary mb-1 leading-tight">{task.title}</h3>
                             <div className="flex items-center gap-2 mb-4">

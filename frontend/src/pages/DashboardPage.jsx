@@ -18,6 +18,7 @@ import useWebSocket from '../hooks/useWebSocket';
 import AddMachineModal from '../components/AddMachineModal';
 import AddUserModal from '../components/AddUserModal';
 import CreateTaskModal from '../components/CreateTaskModal';
+import EditTaskModal from '../components/EditTaskModal';
 import GlobalAIAssistantModal from '../components/GlobalAIAssistantModal';
 import TopBar from '../components/TopBar';
 import LeftPanel from '../components/LeftPanel';
@@ -372,6 +373,7 @@ export default function DashboardPage() {
     const isCreateTaskModalOpen = useAppStore((state) => state.isCreateTaskModalOpen);
     const isAddUserModalOpen = useAppStore((state) => state.isAddUserModalOpen);
     const isGlobalAIModalOpen = useAppStore((state) => state.isGlobalAIModalOpen);
+    const isEditTaskModalOpen = useAppStore((state) => state.isEditTaskModalOpen);
     const isJobCreationModalOpen = useAppStore((state) => state.isJobCreationModalOpen);
     const createTaskMachineId = useAppStore((state) => state.createTaskMachineId);
     const wsStatus = useAppStore((state) => state.wsStatus);
@@ -503,6 +505,7 @@ export default function DashboardPage() {
                 {isAddMachineModalOpen && <AddMachineModal />}
                 {isAddUserModalOpen && <AddUserModal />}
                 {isCreateTaskModalOpen && <CreateTaskModal key={createTaskMachineId || 'new-task'} />}
+                {isEditTaskModalOpen && <EditTaskModal />}
                 {isGlobalAIModalOpen && <GlobalAIAssistantModal />}
                 {isJobCreationModalOpen && <JobCreationModal />}
             </AnimatePresence>

@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
-import { Plus, Trash2, X, Zap } from 'lucide-react';
+import { Pencil, Plus, Trash2, X, Zap } from 'lucide-react';
 import OwnerBusinessPanel from './OwnerBusinessPanel';
 import TaskWorkspacePanel from './TaskWorkspacePanel';
 import JobLifecycleTracker from './JobLifecycleTracker';
@@ -47,11 +47,13 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const assignTask = useAppStore((s) => s.assignTask);
     const updateTaskStatus = useAppStore((s) => s.updateTaskStatus);
     const openJobCreationModal = useAppStore((s) => s.openJobCreationModal);
+    const openEditTaskModal = useAppStore((s) => s.openEditTaskModal);
     const deleteTask = useAppStore((s) => s.deleteTask);
     const userRole = useAuthStore((s) => s.user?.role);
 
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
     const canAssignTask = userRole === 'owner' || userRole === 'supervisor';
+    const canEditTask = userRole === 'owner' || userRole === 'supervisor';
     const canDeleteTask = userRole === 'owner' || userRole === 'supervisor';
     const canControlWorkflow = userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator';
 
@@ -286,22 +288,36 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                 </div>
                             )}
 
-                            {canDeleteTask && (
+                            {(canEditTask || canDeleteTask) && (
                                 <div className="mt-4 border-t border-border/60 pt-4">
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            if (!confirm(`Permanently delete "${selectedTask.title}"? This will remove all related data.`)) return;
-                                            setDeletingTask(true);
-                                            try { await deleteTask(selectedTask.id); }
-                                            finally { setDeletingTask(false); }
-                                        }}
-                                        disabled={deletingTask}
-                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-danger/25 bg-danger/8 px-4 py-2.5 text-xs font-semibold text-danger transition hover:bg-danger/15 disabled:opacity-60"
-                                    >
-                                        <Trash2 size={13} />
-                                        {deletingTask ? 'Deleting...' : 'Delete Task'}
-                                    </button>
+                                    <div className={`grid gap-2 ${canEditTask && canDeleteTask ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        {canEditTask && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openEditTaskModal(selectedTask)}
+                                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-accent/20 bg-accent/8 px-4 py-2.5 text-xs font-semibold text-accent transition hover:bg-accent/15"
+                                            >
+                                                <Pencil size={13} />
+                                                Edit Task
+                                            </button>
+                                        )}
+                                        {canDeleteTask && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    if (!confirm(`Permanently delete "${selectedTask.title}"? This will remove all related data.`)) return;
+                                                    setDeletingTask(true);
+                                                    try { await deleteTask(selectedTask.id); }
+                                                    finally { setDeletingTask(false); }
+                                                }}
+                                                disabled={deletingTask}
+                                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-danger/25 bg-danger/8 px-4 py-2.5 text-xs font-semibold text-danger transition hover:bg-danger/15 disabled:opacity-60"
+                                            >
+                                                <Trash2 size={13} />
+                                                {deletingTask ? 'Deleting...' : 'Delete Task'}
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 

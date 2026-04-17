@@ -20,7 +20,7 @@ export default function useWebSocket(companyId) {
     const updateOperator = useAppStore((state) => state.updateOperator);
     const updateUser = useAppStore((state) => state.updateUser);
     const removeTaskById = useAppStore((state) => state.removeTaskById);
-    const fetchDashboard = useAppStore((state) => state.fetchDashboard);
+    const refreshTaskSurfaces = useAppStore((state) => state.refreshTaskSurfaces);
     const addAlert = useAppStore((state) => state.addAlert);
 
     const scheduleDashboardRefresh = useCallback(() => {
@@ -29,9 +29,9 @@ export default function useWebSocket(companyId) {
         }
 
         dashboardRefreshTimeoutRef.current = window.setTimeout(() => {
-            fetchDashboard();
+            refreshTaskSurfaces();
         }, 250);
-    }, [fetchDashboard]);
+    }, [refreshTaskSurfaces]);
 
     const connect = useCallback(() => {
         if (!companyId) {
@@ -98,7 +98,7 @@ export default function useWebSocket(companyId) {
                             addAlert(msg.message, msg.severity || 'info');
                             break;
                         case 'dashboard_refresh':
-                            fetchDashboard();
+                            refreshTaskSurfaces();
                             break;
                         default:
                             break;
@@ -144,7 +144,7 @@ export default function useWebSocket(companyId) {
                 }, delay);
             }
         }
-    }, [companyId, updateTask, updateMachine, updateOperator, updateUser, removeTaskById, fetchDashboard, addAlert, scheduleDashboardRefresh]);
+    }, [companyId, updateTask, updateMachine, updateOperator, updateUser, removeTaskById, refreshTaskSurfaces, addAlert, scheduleDashboardRefresh]);
 
     useEffect(() => {
         connectRef.current = connect;
