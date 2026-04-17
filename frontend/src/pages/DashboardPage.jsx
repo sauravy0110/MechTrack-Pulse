@@ -380,6 +380,7 @@ export default function DashboardPage() {
     const aiProviderStatus = useAppStore((state) => state.aiProviderStatus);
     const [isMobile, setIsMobile] = useState(false);
     const userRole = user?.role;
+    const canManageJobs = userRole === 'owner' || userRole === 'supervisor';
     const [activeTab, setActiveTab] = useState(() => (userRole === 'owner' || userRole === 'supervisor' ? 'factory' : 'tasks'));
     const sections = useMemo(() => DESKTOP_SECTIONS[userRole] || DESKTOP_SECTIONS.owner, [userRole]);
     const [activeSection, setActiveSection] = useState('overview');
@@ -507,7 +508,7 @@ export default function DashboardPage() {
                 {isCreateTaskModalOpen && <CreateTaskModal key={createTaskMachineId || 'new-task'} />}
                 {isEditTaskModalOpen && <EditTaskModal />}
                 {isGlobalAIModalOpen && <GlobalAIAssistantModal />}
-                {isJobCreationModalOpen && <JobCreationModal />}
+                {isJobCreationModalOpen && canManageJobs && <JobCreationModal />}
             </AnimatePresence>
 
             <div className="flex flex-1">

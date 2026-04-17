@@ -693,6 +693,16 @@ function StepPartDetails({
     machines,
     operators,
 }) {
+    const recommendedOperator = (operators || [])
+        .filter((operator) => operator.is_on_duty && (operator.current_task_count || 0) < 5)
+        .sort((a, b) => {
+            const skillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+            if (skillDiff !== 0) return skillDiff;
+            const queueDiff = (a.current_task_count || 0) - (b.current_task_count || 0);
+            if (queueDiff !== 0) return queueDiff;
+            return a.full_name.localeCompare(b.full_name);
+        })[0] || null;
+
     const operatorOptions = (operators || [])
         .sort((a, b) => {
             const aAvailable = a.is_on_duty && (a.current_task_count || 0) < 5 ? 0 : 1;
@@ -749,13 +759,37 @@ function StepPartDetails({
             </SectionCard>
 
             <SectionCard eyebrow="Planning" title="Assignment and scheduling" description="Choose the preferred machine, optionally pre-assign an operator, and set the urgency in one structured block.">
+                <div className="mb-4 rounded-2xl border border-accent/25 bg-accent/10 px-4 py-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">AI Recommended</div>
+                            <p className="mt-2 text-sm font-semibold text-text-primary">
+                                {recommendedOperator ? recommendedOperator.full_name : 'No operator currently available for auto assignment'}
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">
+                                {recommendedOperator
+                                    ? `Skill ${Math.round(recommendedOperator.skill_score ?? 0)} • ${(recommendedOperator.current_task_count || 0)}/5 tasks • AI recommended`
+                                    : 'Manual selection is still available from the company operator list below.'}
+                            </p>
+                        </div>
+                        {recommendedOperator ? (
+                            <button
+                                type="button"
+                                onClick={() => setSelectedOperatorId(recommendedOperator.id)}
+                                className="rounded-xl border border-accent/25 bg-white/70 px-4 py-3 text-sm font-semibold text-accent"
+                            >
+                                Auto Assign Recommended
+                            </button>
+                        ) : null}
+                    </div>
+                </div>
                 <div className="grid gap-4 md:grid-cols-3">
                     <SelectField label="Machine" value={selectedMachineId} onChange={setSelectedMachineId} options={machines.map((machine) => ({ label: machine.name, value: machine.id }))} placeholder="Assign later" />
                     <SelectField label="Assign Operator" value={selectedOperatorId} onChange={setSelectedOperatorId} options={operatorOptions} placeholder="Select operator manually or assign later" />
                     <SelectField label="Priority" value={priority} onChange={setPriority} options={PRIORITY_OPTIONS.map((item) => ({ label: item.charAt(0).toUpperCase() + item.slice(1), value: item }))} placeholder="Select priority" />
                 </div>
                 <p className="text-xs leading-6 text-text-secondary">
-                    All company operators are listed here for manual assignment. If you leave it blank, the job stays unassigned for later scheduling.
+                    The AI recommendation is shown above. Below that, all company operators are listed for manual assignment by name. If you leave it blank, the job stays unassigned for later scheduling.
                 </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                     <div className="rounded-2xl border border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">

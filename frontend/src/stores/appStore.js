@@ -102,6 +102,18 @@ function shouldRefreshOwnerBusiness() {
     return getStoredUserRole() === 'owner';
 }
 
+function canAccessAnalytics(role = getStoredUserRole()) {
+    return role === 'owner' || role === 'supervisor';
+}
+
+function canAccessOperatorStatus(role = getStoredUserRole()) {
+    return role === 'owner' || role === 'supervisor' || role === 'operator';
+}
+
+function canAccessReports(role = getStoredUserRole()) {
+    return role === 'owner' || role === 'supervisor';
+}
+
 function triggerBrowserDownload(blob, filename) {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -193,33 +205,51 @@ const useAppStore = create((set, get) => ({
     },
 
     fetchDashboard: async () => {
+        if (!canAccessAnalytics()) {
+            set({ dashboard: null });
+            return null;
+        }
         try {
             const { data } = await api.get('/analytics/dashboard');
             set({ dashboard: data });
+            return data;
         } catch (error) {
             void error;
+            return null;
         }
     },
 
     fetchOwnerBusinessOverview: async () => {
+        if (!shouldRefreshOwnerBusiness()) {
+            set({ ownerBusiness: null, loadingOwnerBusiness: false });
+            return null;
+        }
         set({ loadingOwnerBusiness: true });
         try {
             const { data } = await api.get('/owner/business-overview');
             set({ ownerBusiness: data, loadingOwnerBusiness: false });
+            return data;
         } catch (error) {
             void error;
             set({ loadingOwnerBusiness: false });
+            return null;
         }
     },
 
     fetchReports: async () => {
+        if (!canAccessReports()) {
+            set({ reports: [], loadingReports: false });
+            return [];
+        }
         set({ loadingReports: true });
         try {
             const { data } = await api.get('/reports/');
             set({ reports: Array.isArray(data) ? data : [], loadingReports: false });
+            return Array.isArray(data) ? data : [];
         } catch (error) {
             void error;
             set({ loadingReports: false });
+            return [];
         }
     },
 
@@ -249,21 +279,23 @@ const useAppStore = create((set, get) => ({
     },
 
     fetchAll: async () => {
+        const role = getStoredUserRole();
         const { fetchMachines, fetchTasks, fetchDashboard, fetchInsights, fetchOwnerBusinessOverview, fetchReports, fetchAIProviderStatus } = get();
         await Promise.all([
             fetchMachines(),
             fetchTasks(),
-            fetchDashboard(),
-            fetchInsights(),
+            canAccessAnalytics(role) ? fetchDashboard() : Promise.resolve(),
+            canAccessAnalytics(role) ? fetchInsights() : Promise.resolve(),
             fetchAIProviderStatus(),
             shouldRefreshOwnerBusiness() ? fetchOwnerBusinessOverview() : Promise.resolve(),
-            shouldRefreshOwnerBusiness() ? fetchReports() : Promise.resolve(),
+            canAccessReports(role) ? fetchReports() : Promise.resolve(),
         ]);
     },
 
     refreshTaskSurfaces: async () => {
+        const role = getStoredUserRole();
         await Promise.all([
-            get().fetchDashboard(),
+            canAccessAnalytics(role) ? get().fetchDashboard() : Promise.resolve(),
             shouldRefreshOwnerBusiness() ? get().fetchOwnerBusinessOverview() : Promise.resolve(),
         ]);
     },
@@ -271,11 +303,17 @@ const useAppStore = create((set, get) => ({
     // ── Operators ───────────────────────────────────────
     operators: [],
     fetchOperators: async () => {
+        if (!canAccessOperatorStatus()) {
+            set({ operators: [] });
+            return [];
+        }
         try {
             const { data } = await api.get('/operator/status');
             set({ operators: Array.isArray(data) ? data.map(normalizeOperator) : [] });
+            return Array.isArray(data) ? data.map(normalizeOperator) : [];
         } catch (error) {
             void error;
+            return [];
         }
     },
     updateOperator: (updatedOp) => {
