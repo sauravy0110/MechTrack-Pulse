@@ -34,6 +34,7 @@ export default function JobCreationModal() {
     const {
         isJobCreationModalOpen, closeJobCreationModal,
         clients, fetchClients, machines, fetchMachines,
+        operators, fetchOperators,
         createCNCJob, createClient,
         extractJobSpecs, updateJobSpec, addJobSpec, deleteJobSpec, confirmAllSpecs, lockJob,
         fetchJobSpecs,
@@ -66,6 +67,7 @@ export default function JobCreationModal() {
     const [operationType, setOperationType] = useState('');
     const [operationOther, setOperationOther] = useState('');
     const [selectedMachineId, setSelectedMachineId] = useState('');
+    const [selectedOperatorId, setSelectedOperatorId] = useState('');
     const [priority, setPriority] = useState('medium');
     const [description, setDescription] = useState('');
 
@@ -95,12 +97,13 @@ export default function JobCreationModal() {
         if (isJobCreationModalOpen) {
             fetchClients();
             fetchMachines();
+            fetchOperators();
             fetchAIProviderStatus();
             resetState();
             document.body.classList.add('modal-open');
         }
         return () => document.body.classList.remove('modal-open');
-    }, [isJobCreationModalOpen, fetchAIProviderStatus, fetchClients, fetchMachines]);
+    }, [isJobCreationModalOpen, fetchAIProviderStatus, fetchClients, fetchMachines, fetchOperators]);
 
     const resetState = () => {
         setStep(1); setError(''); setTaskId(null);
@@ -113,7 +116,7 @@ export default function JobCreationModal() {
             send_email: true,
         });
         setCreatedClientCreds(null);
-        setPartName(''); setMaterialType(''); setMaterialBatch(''); setOperationType(''); setOperationOther(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
+        setPartName(''); setMaterialType(''); setMaterialBatch(''); setOperationType(''); setOperationOther(''); setSelectedMachineId(''); setSelectedOperatorId(''); setPriority('medium'); setDescription('');
         setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setExtractionMessage(''); setValidationSummary(null); setConfirming(false); setLocking(false);
         setManualSpecDraft({ field_name: '', human_value: '', unit: 'mm' }); setSavingManualSpec(false); setDeletingSpecId('');
     };
@@ -166,6 +169,7 @@ export default function JobCreationModal() {
                         priority,
                         client_id: selectedClientId || null,
                         machine_id: selectedMachineId || null,
+                        assigned_to: selectedOperatorId || null,
                         part_name: partName,
                         material_type: materialType || null,
                         material_batch: materialBatch || null,
@@ -434,9 +438,11 @@ export default function JobCreationModal() {
                             operationType={operationType} setOperationType={setOperationType}
                             operationOther={operationOther} setOperationOther={setOperationOther}
                             selectedMachineId={selectedMachineId} setSelectedMachineId={setSelectedMachineId}
+                            selectedOperatorId={selectedOperatorId} setSelectedOperatorId={setSelectedOperatorId}
                             priority={priority} setPriority={setPriority}
                             description={description} setDescription={setDescription}
                             machines={machines}
+                            operators={operators}
                         />
                     )}
 
@@ -678,12 +684,29 @@ function StepPartDetails({
     setOperationOther,
     selectedMachineId,
     setSelectedMachineId,
+    selectedOperatorId,
+    setSelectedOperatorId,
     priority,
     setPriority,
     description,
     setDescription,
     machines,
+    operators,
 }) {
+    const operatorOptions = (operators || [])
+        .filter((operator) => operator.is_on_duty && (operator.current_task_count || 0) < 5)
+        .sort((a, b) => {
+            const prioritySkillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
+            if (prioritySkillDiff !== 0) return prioritySkillDiff;
+            const queueDiff = (a.current_task_count || 0) - (b.current_task_count || 0);
+            if (queueDiff !== 0) return queueDiff;
+            return a.full_name.localeCompare(b.full_name);
+        })
+        .map((operator) => ({
+            label: `${operator.full_name} (${operator.current_task_count || 0}/5)${operator.skill_score != null ? ` • Skill ${Math.round(operator.skill_score)}` : ''}`,
+            value: operator.id,
+        }));
+
     return (
         <div className="space-y-5">
             <SectionCard
@@ -723,10 +746,25 @@ function StepPartDetails({
                 </div>
             </SectionCard>
 
-            <SectionCard eyebrow="Planning" title="Assignment preferences" description="Set the preferred machine now or leave it open for later scheduling.">
-                <div className="grid gap-4 md:grid-cols-2">
+            <SectionCard eyebrow="Planning" title="Assignment and scheduling" description="Choose the preferred machine, optionally pre-assign an operator, and set the urgency in one structured block.">
+                <div className="grid gap-4 md:grid-cols-3">
                     <SelectField label="Machine" value={selectedMachineId} onChange={setSelectedMachineId} options={machines.map((machine) => ({ label: machine.name, value: machine.id }))} placeholder="Assign later" />
+                    <SelectField label="Assign Operator" value={selectedOperatorId} onChange={setSelectedOperatorId} options={operatorOptions} placeholder="Auto / assign later" />
                     <SelectField label="Priority" value={priority} onChange={setPriority} options={PRIORITY_OPTIONS.map((item) => ({ label: item.charAt(0).toUpperCase() + item.slice(1), value: item }))} placeholder="Select priority" />
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Machine</div>
+                        <p className="mt-2 text-text-primary">{selectedMachineId ? machines.find((machine) => machine.id === selectedMachineId)?.name || 'Selected' : 'Not fixed yet'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Operator</div>
+                        <p className="mt-2 text-text-primary">{selectedOperatorId ? operators.find((operator) => operator.id === selectedOperatorId)?.full_name || 'Selected' : 'Auto / later assignment'}</p>
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Priority</div>
+                        <p className="mt-2 capitalize text-text-primary">{priority}</p>
+                    </div>
                 </div>
             </SectionCard>
         </div>

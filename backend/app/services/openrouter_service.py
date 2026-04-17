@@ -119,7 +119,12 @@ def _error_requires_single_user_turn_retry(error: dict[str, Any] | None) -> bool
     if not error:
         return False
     message = str(error.get("message") or "").lower()
-    return "roles must alternate" in message or ("system" in message and "user" in message and "alternate" in message)
+    return (
+        "roles must alternate" in message
+        or ("system" in message and "user" in message and "alternate" in message)
+        or "developer instruction is not enabled" in message
+        or "developer instructions are not enabled" in message
+    )
 
 
 def _build_vision_messages(
@@ -293,7 +298,7 @@ def _chat_json_with_image(
     if not image_url:
         return None
 
-    response = _send_chat_completion(
+    response, error = _send_chat_completion_result(
         model=model,
         messages=_build_vision_messages(
             system_prompt=system_prompt,
@@ -305,6 +310,20 @@ def _chat_json_with_image(
         fallback_models=[FREE_MODELS_ROUTER],
         include_reasoning_fallback=False,
     )
+    if not response and _error_requires_single_user_turn_retry(error):
+        response, _retry_error = _send_chat_completion_result(
+            model=model,
+            messages=_build_vision_messages(
+                system_prompt=system_prompt,
+                user_payload=user_payload,
+                image_url=image_url,
+                merge_system_into_user=True,
+            ),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            fallback_models=[FREE_MODELS_ROUTER],
+            include_reasoning_fallback=False,
+        )
     if not response:
         return None
 

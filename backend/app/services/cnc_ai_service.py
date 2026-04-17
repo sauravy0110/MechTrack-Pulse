@@ -91,6 +91,11 @@ def _vision_failure_note(error: dict[str, Any] | None) -> str:
             "The free OCR provider rejected the first image message format. "
             "A provider-safe fallback was attempted; retry or paste drawing text if the image still does not parse."
         )
+    if status_code == 400 and "developer instruction is not enabled" in message.lower():
+        return (
+            "The free OCR provider rejected instruction-style image prompting. "
+            "A provider-safe fallback was attempted; retry or continue manually if the image still does not parse."
+        )
     if message:
         return f"Vision OCR fallback used. {message}"
     return "Uploaded drawing could not be parsed confidently by the configured vision model."

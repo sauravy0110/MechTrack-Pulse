@@ -761,7 +761,7 @@ const useAppStore = create((set, get) => ({
     closeJobCreationModal: () => set({ isJobCreationModalOpen: false }),
 
     // ── Create CNC Job (full flow) ───────────────────────
-    createCNCJob: async ({ title, description, priority, client_id, machine_id, part_name, material_type, material_batch, operation_type, operation_other, drawing_url, estimated_completion }) => {
+    createCNCJob: async ({ title, description, priority, client_id, machine_id, assigned_to, part_name, material_type, material_batch, operation_type, operation_other, drawing_url, estimated_completion }) => {
         set({ creatingTask: true });
         try {
             // Step 1: Create the base task
@@ -769,6 +769,7 @@ const useAppStore = create((set, get) => ({
                 title,
                 description: description || null,
                 machine_id: machine_id || null,
+                assigned_to: assigned_to || null,
                 priority: priority || 'medium',
                 client_id: client_id || null,
                 estimated_completion: estimated_completion || null,
