@@ -860,6 +860,48 @@ const useAppStore = create((set, get) => ({
         }
     },
 
+    addJobSpec: async (taskId, payload) => {
+        try {
+            const { data } = await api.post(`/job-specs/${taskId}/add`, payload);
+            set((state) => ({
+                jobSpecs: {
+                    ...state.jobSpecs,
+                    [taskId]: {
+                        ...state.jobSpecs[taskId],
+                        all_confirmed: false,
+                        specs: [...(state.jobSpecs[taskId]?.specs || []), data],
+                    },
+                },
+            }));
+            get().addAlert('Manual spec added.', 'success');
+            return data;
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to add manual spec.'));
+        }
+    },
+
+    deleteJobSpec: async (specId) => {
+        try {
+            await api.delete(`/job-specs/spec/${specId}`);
+            set((state) => {
+                const nextJobSpecs = Object.fromEntries(
+                    Object.entries(state.jobSpecs).map(([taskId, value]) => [
+                        taskId,
+                        {
+                            ...value,
+                            all_confirmed: false,
+                            specs: (value?.specs || []).filter((spec) => spec.id !== specId),
+                        },
+                    ])
+                );
+                return { jobSpecs: nextJobSpecs };
+            });
+            get().addAlert('Spec removed.', 'success');
+        } catch (error) {
+            throw new Error(getApiErrorMessage(error, 'Unable to delete spec.'));
+        }
+    },
+
     confirmAllSpecs: async (taskId) => {
         try {
             const { data } = await api.post(`/job-specs/${taskId}/confirm-all`);

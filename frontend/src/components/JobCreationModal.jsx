@@ -35,7 +35,7 @@ export default function JobCreationModal() {
         isJobCreationModalOpen, closeJobCreationModal,
         clients, fetchClients, machines, fetchMachines,
         createCNCJob, createClient,
-        extractJobSpecs, updateJobSpec, confirmAllSpecs, lockJob,
+        extractJobSpecs, updateJobSpec, addJobSpec, deleteJobSpec, confirmAllSpecs, lockJob,
         fetchJobSpecs,
         creatingTask, lockingJob,
         aiProviderStatus, fetchAIProviderStatus,
@@ -80,6 +80,13 @@ export default function JobCreationModal() {
     const [extractionMessage, setExtractionMessage] = useState('');
     const [validationSummary, setValidationSummary] = useState(null);
     const [confirming, setConfirming] = useState(false);
+    const [manualSpecDraft, setManualSpecDraft] = useState({
+        field_name: '',
+        human_value: '',
+        unit: 'mm',
+    });
+    const [savingManualSpec, setSavingManualSpec] = useState(false);
+    const [deletingSpecId, setDeletingSpecId] = useState('');
 
     // Step 4: Lock
     const [locking, setLocking] = useState(false);
@@ -108,6 +115,7 @@ export default function JobCreationModal() {
         setCreatedClientCreds(null);
         setPartName(''); setMaterialType(''); setMaterialBatch(''); setOperationType(''); setOperationOther(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
         setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setExtractionMessage(''); setValidationSummary(null); setConfirming(false); setLocking(false);
+        setManualSpecDraft({ field_name: '', human_value: '', unit: 'mm' }); setSavingManualSpec(false); setDeletingSpecId('');
     };
 
     if (!isJobCreationModalOpen) return null;
@@ -271,6 +279,60 @@ export default function JobCreationModal() {
         }
     };
 
+    const handleManualProceed = async () => {
+        if (specs.length === 0) {
+            setError('Add at least one manual specification before continuing without AI extraction.');
+            return;
+        }
+        setError('');
+        setStep(4);
+    };
+
+    const handleAddManualSpec = async () => {
+        const fieldName = manualSpecDraft.field_name.trim();
+        const humanValue = manualSpecDraft.human_value.trim();
+        if (!fieldName || !humanValue) {
+            setError('Manual mode needs both a field name and a verified value.');
+            return;
+        }
+
+        setSavingManualSpec(true);
+        setError('');
+        try {
+            const createdSpec = await addJobSpec(taskId, {
+                field_name: fieldName,
+                human_value: humanValue,
+                unit: manualSpecDraft.unit.trim() || 'mm',
+                ai_value: null,
+                ai_confidence: 0,
+            });
+            setSpecs((current) => [...current, createdSpec]);
+            setManualSpecDraft({ field_name: '', human_value: '', unit: manualSpecDraft.unit || 'mm' });
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setSavingManualSpec(false);
+        }
+    };
+
+    const handleDeleteSpec = async (specId) => {
+        setDeletingSpecId(specId);
+        setError('');
+        try {
+            await deleteJobSpec(specId);
+            setSpecs((current) => current.filter((spec) => spec.id !== specId));
+            setEditedSpecs((current) => {
+                const next = { ...current };
+                delete next[specId];
+                return next;
+            });
+        } catch (e) {
+            setError(e.message);
+        } finally {
+            setDeletingSpecId('');
+        }
+    };
+
     const hasBlockingInvalidSpecs = specs.some((spec) => {
         const isInvalid = spec.review_status ? spec.review_status === 'invalid' : (spec.ai_confidence || 0) < 0.7;
         if (!isInvalid) {
@@ -393,6 +455,12 @@ export default function JobCreationModal() {
                             validationSummary={validationSummary}
                             partName={partName}
                             aiProviderStatus={aiProviderStatus}
+                            manualSpecDraft={manualSpecDraft}
+                            setManualSpecDraft={setManualSpecDraft}
+                            onAddManualSpec={handleAddManualSpec}
+                            savingManualSpec={savingManualSpec}
+                            onDeleteSpec={handleDeleteSpec}
+                            deletingSpecId={deletingSpecId}
                         />
                     )}
 
@@ -420,14 +488,23 @@ export default function JobCreationModal() {
 
                     <div className="flex flex-wrap justify-end gap-2">
                         {step === 3 && specs.length > 0 && (
-                            <button
-                                type="button"
-                                onClick={handleConfirmAll}
-                                disabled={confirming || hasBlockingInvalidSpecs}
-                                className="rounded-xl border border-success/25 bg-success/10 px-4 py-3 text-sm font-semibold text-success disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {confirming ? 'Confirming...' : hasBlockingInvalidSpecs ? 'Resolve Invalid Fields' : 'Review Complete & Continue'}
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleManualProceed}
+                                    className="rounded-xl border border-accent/25 bg-accent/10 px-4 py-3 text-sm font-semibold text-accent"
+                                >
+                                    Continue Manually
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleConfirmAll}
+                                    disabled={confirming || hasBlockingInvalidSpecs}
+                                    className="rounded-xl border border-success/25 bg-success/10 px-4 py-3 text-sm font-semibold text-success disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {confirming ? 'Confirming...' : hasBlockingInvalidSpecs ? 'Resolve Invalid Fields' : 'Review Complete & Continue'}
+                                </button>
+                            </>
                         )}
                         {step < 3 && (
                             <button
@@ -440,14 +517,23 @@ export default function JobCreationModal() {
                             </button>
                         )}
                         {step === 3 && specs.length === 0 && (
-                            <button
-                                type="button"
-                                onClick={handleExtract}
-                                disabled={extracting}
-                                className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                                {extracting ? 'Extracting...' : 'Extract Specs'}
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleManualProceed}
+                                    className="rounded-xl border border-accent/25 bg-accent/10 px-5 py-3 text-sm font-semibold text-accent"
+                                >
+                                    Proceed Manually
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleExtract}
+                                    disabled={extracting}
+                                    className="btn-primary rounded-xl px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    {extracting ? 'Extracting...' : 'Extract Specs'}
+                                </button>
+                            </>
                         )}
                         {step === 4 && (
                             <button
@@ -662,6 +748,12 @@ function StepAISpecs({
     validationSummary,
     partName,
     aiProviderStatus,
+    manualSpecDraft,
+    setManualSpecDraft,
+    onAddManualSpec,
+    savingManualSpec,
+    onDeleteSpec,
+    deletingSpecId,
 }) {
     const getReviewMeta = (spec) => {
         const status = spec.review_status || ((spec.ai_confidence || 0) >= 0.9 ? 'high_confidence' : (spec.ai_confidence || 0) >= 0.7 ? 'needs_review' : 'invalid');
@@ -788,6 +880,57 @@ function StepAISpecs({
                 </div>
             </div>
 
+            <div className="glass-card rounded-2xl border border-border/70 p-4">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                    <div>
+                        <div className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">
+                            Manual Specs
+                        </div>
+                        <p className="mt-2 text-xs leading-6 text-text-secondary">
+                            If AI extraction fails, add the important dimensions manually here and use the manual continue button.
+                        </p>
+                    </div>
+                    <span className="rounded-full border border-accent/20 bg-accent/8 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">
+                        OCR Optional
+                    </span>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-[1.2fr_1fr_110px_auto]">
+                    <input
+                        type="text"
+                        value={manualSpecDraft.field_name}
+                        onChange={(e) => setManualSpecDraft((current) => ({ ...current, field_name: e.target.value }))}
+                        placeholder="Field name e.g. OD, Length, Thread"
+                        className="input-glass w-full rounded-xl px-3 py-2 text-xs"
+                    />
+                    <input
+                        type="text"
+                        value={manualSpecDraft.human_value}
+                        onChange={(e) => setManualSpecDraft((current) => ({ ...current, human_value: e.target.value }))}
+                        placeholder="Verified value"
+                        className="input-glass w-full rounded-xl px-3 py-2 text-xs font-mono"
+                    />
+                    <input
+                        type="text"
+                        value={manualSpecDraft.unit}
+                        onChange={(e) => setManualSpecDraft((current) => ({ ...current, unit: e.target.value }))}
+                        placeholder="mm"
+                        className="input-glass w-full rounded-xl px-3 py-2 text-xs"
+                    />
+                    <button
+                        type="button"
+                        onClick={onAddManualSpec}
+                        disabled={savingManualSpec}
+                        className="rounded-xl border border-success/25 bg-success/10 px-4 py-2 text-xs font-semibold text-success disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        {savingManualSpec ? 'Adding...' : 'Add Spec'}
+                    </button>
+                </div>
+                <div className="mt-3 text-[11px] text-text-muted">
+                    Example manual rows: Overall Length = 450 mm, OD1 = 60 mm, Thread = M30x2.
+                </div>
+            </div>
+
             {/* Specs table */}
             {specs.length > 0 ? (
                 <div className="space-y-4">
@@ -879,17 +1022,27 @@ function StepAISpecs({
                                         </div>
 
                                         <div className="min-w-0">
-                                            <input
-                                                type="text"
-                                                value={currentValue}
-                                                onChange={(e) => onSpecEdit(spec, e.target.value)}
-                                                placeholder={requiresHumanValue ? 'Type verified value' : (spec.ai_value || 'Enter value')}
-                                                className="input-glass w-full rounded-xl px-3 py-2 text-xs font-mono"
-                                                style={{
-                                                    background: spec.is_confirmed ? 'rgba(52,211,153,0.08)' : requiresHumanValue ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.05)',
-                                                    borderColor: spec.is_confirmed ? 'rgba(52,211,153,0.28)' : requiresHumanValue ? 'rgba(248,113,113,0.24)' : 'rgba(255,255,255,0.1)',
-                                                }}
-                                            />
+                                            <div className="flex items-start gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={currentValue}
+                                                    onChange={(e) => onSpecEdit(spec, e.target.value)}
+                                                    placeholder={requiresHumanValue ? 'Type verified value' : (spec.ai_value || 'Enter value')}
+                                                    className="input-glass w-full rounded-xl px-3 py-2 text-xs font-mono"
+                                                    style={{
+                                                        background: spec.is_confirmed ? 'rgba(52,211,153,0.08)' : requiresHumanValue ? 'rgba(248,113,113,0.08)' : 'rgba(255,255,255,0.05)',
+                                                        borderColor: spec.is_confirmed ? 'rgba(52,211,153,0.28)' : requiresHumanValue ? 'rgba(248,113,113,0.24)' : 'rgba(255,255,255,0.1)',
+                                                    }}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onDeleteSpec(spec.id)}
+                                                    disabled={deletingSpecId === spec.id}
+                                                    className="rounded-xl border border-danger/20 bg-danger/8 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-danger disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    {deletingSpecId === spec.id ? '...' : 'Delete'}
+                                                </button>
+                                            </div>
                                             {requiresHumanValue && !currentValue.trim() && (
                                                 <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-danger">
                                                     Required before confirmation
@@ -910,10 +1063,10 @@ function StepAISpecs({
                 <div className="rounded-2xl border border-dashed border-accent/20 bg-accent/5 px-6 py-10 text-center">
                     <div style={{ fontSize: '32px', marginBottom: '10px' }}>🧠</div>
                     <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
-                        Ready to Extract Specs
+                        Ready for AI Extraction or Manual Entry
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '300px', margin: '0 auto' }}>
-                        Upload the drawing, paste any readable text you have, and extract the spec table before human verification.
+                        Upload the drawing, paste any readable text you have, or add verified spec rows manually before continuing.
                     </div>
                     {extractionMessage ? (
                         <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-warning/20 bg-warning/8 px-4 py-3 text-left text-xs leading-6 text-text-secondary">
