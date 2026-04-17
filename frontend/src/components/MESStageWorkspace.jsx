@@ -320,20 +320,23 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
 
             {canManage && task.status === 'final_inspection' && (
                 <>
-                    <SectionShell title="Supervisor Decision">
-                        <textarea value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} rows={3} placeholder="Approval or rework notes" className="input-glass w-full rounded-xl px-4 py-3 text-sm" />
+                    <SectionShell title="Final Human Verification">
+                        <div className="rounded-xl border border-accent/15 bg-accent/5 px-3 py-3 text-xs leading-5 text-text-secondary">
+                            Review the operator submission, uploaded evidence, CNC requirements, and QC trail before releasing this job.
+                        </div>
+                        <textarea value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} rows={3} placeholder="Approval notes or rework reason" className="input-glass w-full rounded-xl px-4 py-3 text-sm" />
                         <div className="grid grid-cols-2 gap-2">
                             <button
                                 type="button"
                                 onClick={() => runAction('approve', async () => {
                                     const response = await api.post(`/tasks/${task.id}/supervisor-final-decision`, { decision: 'approve', remarks: finalRemarks || null });
-                                    setFinalApproved(true);
+                                    setFinalApproved(false);
                                     return response;
                                 })}
                                 className="btn-primary rounded-xl px-4 py-3 text-xs font-semibold"
                                 disabled={busyKey === 'approve'}
                             >
-                                {busyKey === 'approve' ? 'Approving...' : 'Approve'}
+                                {busyKey === 'approve' ? 'Approving...' : 'Approve Job'}
                             </button>
                             <button
                                 type="button"
@@ -341,7 +344,7 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
                                 className="rounded-xl border border-warning/25 bg-warning/10 px-4 py-3 text-xs font-semibold text-warning"
                                 disabled={busyKey === 'rework'}
                             >
-                                {busyKey === 'rework' ? 'Sending...' : 'Send to Rework'}
+                                {busyKey === 'rework' ? 'Sending...' : 'Send To Rework'}
                             </button>
                         </div>
                     </SectionShell>

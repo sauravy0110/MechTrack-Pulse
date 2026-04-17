@@ -9,7 +9,6 @@ import ProcessPlanPanel from './ProcessPlanPanel';
 import ReworkAlertBanner from './ReworkAlertBanner';
 
 const PRIORITY_COLORS = { critical: 'text-danger', high: 'text-warning', medium: 'text-accent', low: 'text-text-muted' };
-const FILTER_OPTIONS = [{ value: 'all', label: 'All' }, { value: 'active', label: 'Active' }, { value: 'completed', label: 'Completed' }, { value: 'delayed', label: 'Delayed' }];
 const SORT_OPTIONS = [{ value: 'priority', label: 'Priority' }, { value: 'time', label: 'Time' }];
 const MAX_OPERATOR_QUEUE = 5;
 
@@ -78,6 +77,8 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const canEditTask = userRole === 'owner' || userRole === 'supervisor';
     const canDeleteTask = userRole === 'owner' || userRole === 'supervisor';
     const canControlWorkflow = userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator';
+    const canReviewTasks = userRole === 'owner' || userRole === 'supervisor';
+    const canSeeReworkQueue = userRole === 'operator' || userRole === 'owner' || userRole === 'supervisor';
 
     const [assigningTaskId, setAssigningTaskId] = useState('');
     const [assignmentErrors, setAssignmentErrors] = useState({});
@@ -86,11 +87,27 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const [deletingTask, setDeletingTask] = useState(false);
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
+    const filterOptions = useMemo(() => ([
+        { value: 'all', label: 'All' },
+        { value: 'active', label: 'Active' },
+        ...(canReviewTasks ? [{ value: 'review', label: 'Review' }] : []),
+        ...(canSeeReworkQueue ? [{ value: 'rework', label: 'Rework' }] : []),
+        { value: 'completed', label: 'Completed' },
+        { value: 'delayed', label: 'Delayed' },
+    ]), [canReviewTasks, canSeeReworkQueue]);
 
     const machineTasks = useMemo(() => {
         if (!selectedMachine) return [];
         return sortTasks(filterTasks(tasks.filter((t) => t.machine_id === selectedMachine.id), taskFilter), taskSort);
     }, [selectedMachine, tasks, taskFilter, taskSort]);
+    const machineReviewTasks = useMemo(() => {
+        if (!selectedMachine) return [];
+        return tasks.filter((task) => task.machine_id === selectedMachine.id && task.status === 'final_inspection');
+    }, [selectedMachine, tasks]);
+    const machineReworkTasks = useMemo(() => {
+        if (!selectedMachine) return [];
+        return tasks.filter((task) => task.machine_id === selectedMachine.id && task.rework_flag && task.status !== 'completed');
+    }, [selectedMachine, tasks]);
 
     const operatorById = useMemo(() => Object.fromEntries(operators.map((o) => [o.id, o])), [operators]);
 
@@ -135,6 +152,13 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
         openJobCreationModal();
     };
 
+    const focusTaskQueue = (filterValue, task) => {
+        setTaskFilter(filterValue);
+        if (task) {
+            setSelectedTask(task);
+        }
+    };
+
     if (!selectedMachine && userRole === 'owner') {
         return <OwnerBusinessPanel embedded={embedded} />;
     }
@@ -176,12 +200,39 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
 
                     <div className="grid grid-cols-2 gap-2">
                         <select value={taskFilter} onChange={(e) => setTaskFilter(e.target.value)} className="input-glass rounded-lg px-3 py-2 text-xs">
-                            {FILTER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                            {filterOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                         <select value={taskSort} onChange={(e) => setTaskSort(e.target.value)} className="input-glass rounded-lg px-3 py-2 text-xs">
                             {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
                     </div>
+
+                    {(canReviewTasks || canSeeReworkQueue) && (
+                        <div className="grid grid-cols-2 gap-2">
+                            {canReviewTasks && (
+                                <button
+                                    type="button"
+                                    onClick={() => focusTaskQueue('review', machineReviewTasks[0] || null)}
+                                    className="rounded-xl border border-accent/20 bg-accent/8 px-3 py-3 text-left transition hover:bg-accent/12"
+                                >
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">Review</p>
+                                    <p className="mt-1 text-lg font-bold text-text-primary">{machineReviewTasks.length}</p>
+                                    <p className="text-[10px] text-text-secondary">Awaiting supervisor sign-off</p>
+                                </button>
+                            )}
+                            {canSeeReworkQueue && (
+                                <button
+                                    type="button"
+                                    onClick={() => focusTaskQueue('rework', machineReworkTasks[0] || null)}
+                                    className="rounded-xl border border-warning/20 bg-warning/8 px-3 py-3 text-left transition hover:bg-warning/12"
+                                >
+                                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-warning">Rework</p>
+                                    <p className="mt-1 text-lg font-bold text-text-primary">{machineReworkTasks.length}</p>
+                                    <p className="text-[10px] text-text-secondary">Returned with supervisor input</p>
+                                </button>
+                            )}
+                        </div>
+                    )}
 
                     <div>
                         <p className="text-xs font-bold text-text-secondary uppercase mb-2">Tasks ({machineTasks.length})</p>

@@ -31,10 +31,14 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const [startingTaskId, setStartingTaskId] = useState('');
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
+    const reviewTasks = useMemo(() => sortTasks(tasks.filter((task) => task.status === 'final_inspection'), 'time'), [tasks]);
+    const reworkTasks = useMemo(() => sortTasks(tasks.filter((task) => task.rework_flag && task.status !== 'completed'), 'time'), [tasks]);
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
     const canEditTask = userRole === 'owner' || userRole === 'supervisor';
     const canDeleteTask = userRole === 'owner' || userRole === 'supervisor';
     const canControlWorkflow = userRole === 'owner' || userRole === 'supervisor' || userRole === 'operator';
+    const canReviewTasks = userRole === 'owner' || userRole === 'supervisor';
+    const canSeeReworkQueue = userRole === 'operator' || userRole === 'owner' || userRole === 'supervisor';
 
     const getMachineName = (id) => machines.find((m) => m.id === id)?.name || 'Unassigned Machine';
     const canStart = (status) => ['idle', 'queued', 'paused', 'delayed'].includes(status);
@@ -94,7 +98,14 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         }
     };
 
-    const toggleWorkspace = (task) => {
+    const openTaskWorkspace = (task) => {
+        if (task.status === 'final_inspection' && canReviewTasks) {
+            setTaskFilter('review');
+        } else if (task.rework_flag && task.status !== 'completed' && canSeeReworkQueue) {
+            setTaskFilter('rework');
+        } else if (!filterTasks(tasks, taskFilter).some((item) => item.id === task.id)) {
+            setTaskFilter('all');
+        }
         setSelectedTask(task);
         setExpandedTaskId((current) => current === task.id ? '' : task.id);
     };
@@ -122,6 +133,38 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         ? 'px-6 py-6 pb-8 space-y-5'
         : 'flex-1 overflow-y-auto p-4 space-y-4 pb-32';
 
+    const renderTaskSummaryCard = (task, tone = 'accent') => (
+        <div key={task.id} className={`rounded-2xl border px-4 py-4 ${
+            tone === 'warning'
+                ? 'border-warning/25 bg-warning/8'
+                : 'border-accent/20 bg-accent/5'
+        }`}>
+            <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-text-primary">{task.title}</p>
+                    <p className="mt-1 text-[11px] text-text-secondary">
+                        {task.part_name || 'General task'} {task.material_type ? `• ${task.material_type}` : ''} {task.operation_type ? `• ${task.operation_type === 'Other' ? (task.operation_other || 'Other') : task.operation_type}` : ''}
+                    </p>
+                    <p className="mt-2 text-[11px] text-text-muted">
+                        Status: {task.status.replace(/_/g, ' ')} {task.rework_flag ? `• Rework #${task.rework_iteration || 1}` : ''}
+                    </p>
+                    {task.rework_reason ? (
+                        <p className="mt-2 rounded-xl border border-warning/20 bg-warning/8 px-3 py-2 text-[11px] leading-5 text-warning">
+                            Supervisor input: {task.rework_reason}
+                        </p>
+                    ) : null}
+                </div>
+                <button
+                    type="button"
+                    onClick={() => openTaskWorkspace(task)}
+                    className="shrink-0 rounded-xl border border-border/70 bg-bg-hover/40 px-3 py-2 text-[11px] font-semibold text-text-primary"
+                >
+                    {tone === 'warning' ? 'Open Rework' : 'Start Review'}
+                </button>
+            </div>
+        </div>
+    );
+
     return (
         <div className={wrapperClass}>
             <header className="mb-6 flex items-end justify-between gap-4">
@@ -140,6 +183,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                     className="input-glass rounded-xl px-4 py-3 text-xs font-semibold">
                     <option value="all">All Tasks</option>
                     <option value="active">Active</option>
+                    {canReviewTasks && <option value="review">Review</option>}
+                    {canSeeReworkQueue && <option value="rework">Rework</option>}
                     <option value="completed">Completed</option>
                     <option value="delayed">Delayed</option>
                 </select>
@@ -149,6 +194,42 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                     <option value="time">Sort: Time</option>
                 </select>
             </div>
+
+            {canReviewTasks && reviewTasks.length > 0 && (
+                <section className="glass-card rounded-2xl p-5">
+                    <div className="flex items-end justify-between gap-4">
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-accent">Review Tasks</p>
+                            <h2 className="mt-1 text-lg font-bold text-text-primary">Supervisor final verification queue</h2>
+                            <p className="mt-1 text-xs text-text-secondary">Jobs finished by operators land here for human review, approval, or rework.</p>
+                        </div>
+                        <div className="rounded-full border border-accent/20 bg-accent/8 px-3 py-1 text-[11px] font-semibold text-accent">
+                            {reviewTasks.length} pending
+                        </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        {reviewTasks.map((task) => renderTaskSummaryCard(task, 'accent'))}
+                    </div>
+                </section>
+            )}
+
+            {canSeeReworkQueue && reworkTasks.length > 0 && (
+                <section className="glass-card rounded-2xl p-5">
+                    <div className="flex items-end justify-between gap-4">
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-warning">Rework Queue</p>
+                            <h2 className="mt-1 text-lg font-bold text-text-primary">Jobs returned with supervisor feedback</h2>
+                            <p className="mt-1 text-xs text-text-secondary">Operators can reopen these jobs, review the reason, and continue from the workspace.</p>
+                        </div>
+                        <div className="rounded-full border border-warning/20 bg-warning/10 px-3 py-1 text-[11px] font-semibold text-warning">
+                            {reworkTasks.length} active
+                        </div>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                        {reworkTasks.map((task) => renderTaskSummaryCard(task, 'warning'))}
+                    </div>
+                </section>
+            )}
 
             <AnimatePresence mode="popLayout">
                 {visibleTasks.map((task) => (
@@ -237,7 +318,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => toggleWorkspace(task)}
+                                                    onClick={() => openTaskWorkspace(task)}
                                                     className="btn-ghost py-4 rounded-xl font-black text-[10px] uppercase tracking-tighter active:scale-95 transition-all flex items-center justify-center gap-2"
                                                 >
                                                     <ChevronDown size={14} className={`transition-transform ${expandedTaskId === task.id ? 'rotate-180' : ''}`} />
@@ -282,7 +363,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
 
                             <button
                                 type="button"
-                                onClick={() => toggleWorkspace(task)}
+                                onClick={() => openTaskWorkspace(task)}
                                 className="mt-4 w-full btn-ghost rounded-xl px-4 py-3 text-xs font-semibold inline-flex items-center justify-center gap-2"
                             >
                                 Workspace

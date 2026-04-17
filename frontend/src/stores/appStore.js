@@ -62,6 +62,12 @@ function normalizeUser(user) {
 }
 
 export function filterTasks(tasks, filter) {
+    if (filter === 'review') {
+        return tasks.filter((task) => task.status === 'final_inspection');
+    }
+    if (filter === 'rework') {
+        return tasks.filter((task) => task.rework_flag && task.status !== 'completed');
+    }
     if (filter === 'completed') {
         return tasks.filter((task) => task.status === 'completed');
     }
@@ -1072,11 +1078,19 @@ const useAppStore = create((set, get) => ({
                         rework_flag: true,
                         rework_iteration: data.rework_iteration,
                         rework_reason: rework_reason,
-                        status: 'in_progress',
+                        status: data.task?.status || (t.assigned_to ? 'assigned' : 'ready'),
+                        timer_started_at: null,
                     } : t
                 ),
                 selectedTask: state.selectedTask?.id === taskId
-                    ? { ...state.selectedTask, rework_flag: true, rework_iteration: data.rework_iteration, status: 'in_progress' }
+                    ? {
+                        ...state.selectedTask,
+                        rework_flag: true,
+                        rework_iteration: data.rework_iteration,
+                        rework_reason: rework_reason,
+                        status: data.task?.status || (state.selectedTask.assigned_to ? 'assigned' : 'ready'),
+                        timer_started_at: null,
+                    }
                     : state.selectedTask,
             }));
             get().addAlert(`Rework triggered (iteration #${data.rework_iteration}).`, 'warning');

@@ -1001,7 +1001,7 @@ async def trigger_rework_route(
 ):
     """
     Trigger rework loop. Resets execution (not history).
-    - status → in_progress
+    - status → assigned or ready
     - rework_flag = True
     - rework_iteration++
     - All dashboards notified via WebSocket
@@ -1018,7 +1018,8 @@ async def trigger_rework_route(
     task.rework_flag = True
     task.rework_iteration = (task.rework_iteration or 0) + 1
     task.rework_reason = request.rework_reason
-    task.status = "in_progress"  # Reset execution, preserve history
+    task.timer_started_at = None
+    task.status = "assigned" if task.assigned_to else "ready"
 
     create_job_version(
         db,
@@ -1038,6 +1039,7 @@ async def trigger_rework_route(
         from uuid import UUID as _UUID
         try:
             task.assigned_to = _UUID(request.reassign_to)
+            task.status = "assigned"
         except Exception:
             pass  # Invalid UUID, keep existing assignment
 
@@ -1708,8 +1710,22 @@ async def supervisor_final_decision_route(
         remarks=request.remarks,
     )
     db.add(report)
+    task.status = "completed"
+    task.actual_completion = datetime.now(timezone.utc)
+    task.rework_flag = False
+    task.timer_started_at = None
+    if task.assigned_to:
+        operator_service.decrement_task_count(db, task.assigned_to)
     db.commit()
-    return {"task": _task_to_response(task), "final_decision": "approved_for_dispatch"}
+    db.refresh(task)
+    _broadcast_mes_task_update(
+        background_tasks,
+        current_user.company_id,
+        task,
+        message=f"Job '{task.title}' approved and completed.",
+        severity="success",
+    )
+    return {"task": _task_to_response(task), "final_decision": "approved"}
 
 
 @router.post("/{task_id}/dispatch", status_code=status.HTTP_200_OK)
