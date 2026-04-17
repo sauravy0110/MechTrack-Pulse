@@ -20,10 +20,20 @@ from sqlalchemy import text
 from app.db.database import engine
 
 
+def _run_step(conn, sql: str, success_message: str, skip_prefix: str) -> None:
+    try:
+        conn.execute(text(sql))
+        conn.commit()
+        print(success_message)
+    except Exception as e:
+        conn.rollback()
+        print(f"{skip_prefix}: {e}")
+
+
 def migrate():
     print("=== CNC Shaft MES Migration ===\n")
 
-    with engine.begin() as conn:
+    with engine.connect() as conn:
 
         # ── 1. CNC columns on tasks ──────────────────────────────
         print("→ Patching tasks table with CNC fields…")
@@ -42,18 +52,20 @@ def migrate():
         ]
 
         for col, definition in cnc_task_columns:
-            try:
-                conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col} {definition};"))
-                print(f"   ✅ Added tasks.{col}")
-            except Exception as e:
-                print(f"   ⏩ tasks.{col} already exists ({type(e).__name__})")
+            _run_step(
+                conn,
+                f"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS {col} {definition};",
+                f"   ✅ Ensured tasks.{col}",
+                f"   ⏩ tasks.{col}",
+            )
 
         # ── 2. job_specs table ──────────────────────────────────
         print("\n→ Creating job_specs table…")
-        try:
-            conn.execute(text("""
+        _run_step(
+            conn,
+            """
                 CREATE TABLE IF NOT EXISTS job_specs (
-                    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    id            UUID PRIMARY KEY,
                     company_id    UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
                     task_id       UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
                     field_name    VARCHAR(100) NOT NULL,
@@ -65,28 +77,30 @@ def migrate():
                     created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
-            """))
-            print("   ✅ job_specs table created")
-        except Exception as e:
-            print(f"   ⚠️  job_specs: {e}")
+            """,
+            "   ✅ job_specs table created",
+            "   ⚠️  job_specs",
+        )
 
         # Indexes for job_specs
         for idx_sql, idx_name in [
             ("CREATE INDEX IF NOT EXISTS ix_job_specs_task_id ON job_specs(task_id);", "ix_job_specs_task_id"),
             ("CREATE INDEX IF NOT EXISTS ix_job_specs_company_id ON job_specs(company_id);", "ix_job_specs_company_id"),
         ]:
-            try:
-                conn.execute(text(idx_sql))
-                print(f"   ✅ Index {idx_name}")
-            except Exception as e:
-                print(f"   ⏩ Index {idx_name}: {e}")
+            _run_step(
+                conn,
+                idx_sql,
+                f"   ✅ Index {idx_name}",
+                f"   ⏩ Index {idx_name}",
+            )
 
         # ── 3. job_processes table ──────────────────────────────
         print("\n→ Creating job_processes table…")
-        try:
-            conn.execute(text("""
+        _run_step(
+            conn,
+            """
                 CREATE TABLE IF NOT EXISTS job_processes (
-                    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    id                   UUID PRIMARY KEY,
                     company_id           UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
                     task_id              UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
                     operation_name       VARCHAR(200) NOT NULL,
@@ -100,21 +114,22 @@ def migrate():
                     created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                     updated_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
-            """))
-            print("   ✅ job_processes table created")
-        except Exception as e:
-            print(f"   ⚠️  job_processes: {e}")
+            """,
+            "   ✅ job_processes table created",
+            "   ⚠️  job_processes",
+        )
 
         # Indexes for job_processes
         for idx_sql, idx_name in [
             ("CREATE INDEX IF NOT EXISTS ix_job_processes_task_id ON job_processes(task_id);", "ix_job_processes_task_id"),
             ("CREATE INDEX IF NOT EXISTS ix_job_processes_company_id ON job_processes(company_id);", "ix_job_processes_company_id"),
         ]:
-            try:
-                conn.execute(text(idx_sql))
-                print(f"   ✅ Index {idx_name}")
-            except Exception as e:
-                print(f"   ⏩ Index {idx_name}: {e}")
+            _run_step(
+                conn,
+                idx_sql,
+                f"   ✅ Index {idx_name}",
+                f"   ⏩ Index {idx_name}",
+            )
 
         print("\n=== Migration complete ✅ ===")
 
