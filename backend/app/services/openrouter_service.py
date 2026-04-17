@@ -90,7 +90,29 @@ def _extract_json(content: str) -> dict[str, Any] | None:
     return None
 
 
-def _send_chat_completion(
+def _extract_error_message(body: str) -> str | None:
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(payload, dict):
+        return None
+    error_payload = payload.get("error")
+    if not isinstance(error_payload, dict):
+        return None
+    metadata = error_payload.get("metadata")
+    if isinstance(metadata, dict):
+        raw_message = metadata.get("raw")
+        if isinstance(raw_message, str) and raw_message.strip():
+            return raw_message.strip()
+    message = error_payload.get("message")
+    if isinstance(message, str) and message.strip():
+        return message.strip()
+    return None
+
+
+def _send_chat_completion_result(
     *,
     model: str,
     messages: list[dict[str, Any]],
@@ -98,9 +120,9 @@ def _send_chat_completion(
     max_tokens: int = 700,
     response_format: dict[str, str] | None = None,
     fallback_models: list[str] | None = None,
-) -> dict[str, Any] | None:
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     if not openrouter_enabled():
-        return None
+        return None, {"type": "config", "message": "OPENROUTER_API_KEY is not configured"}
 
     candidate_models = [model]
     for fallback in fallback_models or []:
@@ -112,6 +134,7 @@ def _send_chat_completion(
         candidate_models.append(fallback_model)
 
     headers = _headers()
+    last_error: dict[str, Any] | None = None
     with httpx.Client(timeout=settings.OPENROUTER_TIMEOUT_SECONDS) as client:
         for candidate_model in candidate_models:
             payload: dict[str, Any] = {
@@ -130,22 +153,54 @@ def _send_chat_completion(
                     headers=headers,
                 )
                 response.raise_for_status()
-                return response.json()
+                return response.json(), None
             except httpx.HTTPStatusError as exc:
                 body = exc.response.text[:500]
+                error_message = _extract_error_message(body) or body
                 logger.warning(
                     "OpenRouter chat completion rejected for %s (%s): %s",
                     candidate_model,
                     exc.response.status_code,
                     body,
                 )
+                last_error = {
+                    "type": "http_status",
+                    "model": candidate_model,
+                    "status_code": exc.response.status_code,
+                    "message": error_message,
+                }
                 if exc.response.status_code in {404, 429, 500, 502, 503, 504}:
                     continue
                 break
             except Exception as exc:  # noqa: BLE001
                 logger.warning("OpenRouter chat completion failed for %s: %s", candidate_model, exc)
+                last_error = {
+                    "type": "exception",
+                    "model": candidate_model,
+                    "message": str(exc),
+                }
                 continue
-    return None
+    return None, last_error
+
+
+def _send_chat_completion(
+    *,
+    model: str,
+    messages: list[dict[str, Any]],
+    temperature: float = 0.2,
+    max_tokens: int = 700,
+    response_format: dict[str, str] | None = None,
+    fallback_models: list[str] | None = None,
+) -> dict[str, Any] | None:
+    response, _error = _send_chat_completion_result(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        response_format=response_format,
+        fallback_models=fallback_models,
+    )
+    return response
 
 
 def _chat_json(
@@ -213,6 +268,50 @@ def _chat_json_with_image(
     if not parsed:
         logger.warning("OpenRouter returned non-JSON content for image model %s", model)
     return parsed
+
+
+def _chat_json_with_image_result(
+    *,
+    model: str,
+    system_prompt: str,
+    user_payload: dict[str, Any],
+    image_url: str,
+    temperature: float = 0.2,
+    max_tokens: int = 700,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not image_url:
+        return None, {"type": "input", "message": "image_url is required"}
+
+    response, error = _send_chat_completion_result(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": json.dumps(user_payload, ensure_ascii=True)},
+                    {"type": "image_url", "image_url": {"url": image_url}},
+                ],
+            },
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        fallback_models=[FREE_MODELS_ROUTER],
+    )
+    if not response:
+        return None, error
+
+    choice = (response.get("choices") or [{}])[0]
+    content = _extract_text_content(choice.get("message", {}).get("content", ""))
+    parsed = _extract_json(content)
+    if not parsed:
+        logger.warning("OpenRouter returned non-JSON content for image model %s", model)
+        return None, {
+            "type": "non_json",
+            "model": model,
+            "message": "OpenRouter returned non-JSON content for the image request",
+        }
+    return parsed, None
 
 
 def _chat_text(

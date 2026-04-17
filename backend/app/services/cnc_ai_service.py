@@ -32,7 +32,7 @@ from app.models.job_spec import JobSpec
 from app.models.job_process import JobProcess
 from app.services.openrouter_service import (
     _chat_json,
-    _chat_json_with_image,
+    _chat_json_with_image_result,
     openrouter_enabled,
     openrouter_vision_enabled,
 )
@@ -72,6 +72,23 @@ STANDARD_OPERATIONS = [
 
 STANDARD_THREADS = {6, 8, 10, 12, 14, 16, 20, 24}
 DEFAULT_OPENROUTER_VISION_MODEL = "openrouter/free"
+
+
+def _vision_failure_note(error: dict[str, Any] | None) -> str:
+    if not error:
+        return "Uploaded drawing could not be parsed confidently by the configured vision model."
+
+    status_code = error.get("status_code")
+    message = str(error.get("message") or "").strip()
+    if status_code == 429:
+        return (
+            "The free OCR model is temporarily rate-limited upstream. "
+            "Retry shortly, paste drawing text for a stable fallback, or connect your own provider key in OpenRouter."
+            + (f" Details: {message}" if message else "")
+        )
+    if message:
+        return f"Vision OCR fallback used. {message}"
+    return "Uploaded drawing could not be parsed confidently by the configured vision model."
 
 VISION_OCR_SYSTEM_PROMPT = """
 You are an expert mechanical engineering drawing interpreter.
@@ -221,7 +238,7 @@ def extract_drawing_specs(
 
     # ── Attempt vision-based OCR on the uploaded drawing ──────────────
     if openrouter_vision_enabled() and drawing_image_url:
-        llm_result = _chat_json_with_image(
+        llm_result, vision_error = _chat_json_with_image_result(
             model=settings.OPENROUTER_MODEL_VISION or DEFAULT_OPENROUTER_VISION_MODEL,
             system_prompt=VISION_OCR_SYSTEM_PROMPT,
             user_payload={
@@ -248,11 +265,11 @@ def extract_drawing_specs(
             }
         extraction_notes.append(
             ocr_payload.get("confidence", {}).get("comment")
-            or "Uploaded drawing could not be parsed confidently by the configured vision model."
+            or _vision_failure_note(vision_error)
         )
     elif drawing_image_url:
         extraction_notes.append(
-            "Uploaded drawing OCR needs OPENROUTER_API_KEY and OPENROUTER_MODEL_VISION to be configured."
+            "Uploaded drawing OCR needs OPENROUTER_API_KEY to be configured."
         )
 
     # ── Deterministic text parsing from OCR / pasted text ─────────────
