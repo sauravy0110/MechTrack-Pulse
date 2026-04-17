@@ -48,6 +48,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         return `${minutes}m`;
     };
     const formatStartedAt = (value) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Not started';
+    const canStartCnc = (task) => ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval'].includes(task.status);
+    const canFinishCnc = (task) => ['in_progress', 'qc_check'].includes(task.status);
 
     const handleStatusUpdate = async (taskId, nextStatus) => {
         try { await updateTaskStatus(taskId, nextStatus); }
@@ -68,6 +70,25 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
             addAlert('CNC workflow started. MES controls are now open below.', 'success');
         } catch (error) {
             addAlert(error.response?.data?.detail || error.message || 'Unable to start CNC workflow.', 'error');
+        } finally {
+            setStartingTaskId('');
+        }
+    };
+
+    const handleFinishCncTask = async (task) => {
+        setStartingTaskId(task.id);
+        try {
+            const { data } = await api.post(`/tasks/${task.id}/ai-final-inspection`);
+            if (data?.task) {
+                useAppStore.getState().updateTask(data.task);
+                setSelectedTask(data.task);
+            } else {
+                setSelectedTask(task);
+            }
+            setExpandedTaskId(task.id);
+            addAlert('Final inspection started. Review the workflow below to complete the CNC job.', 'success');
+        } catch (error) {
+            addAlert(error.response?.data?.detail || error.message || 'Unable to finish CNC task.', 'error');
         } finally {
             setStartingTaskId('');
         }
@@ -193,17 +214,45 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                             <div className="grid grid-cols-2 gap-3">
                                 {isCNCJob(task) ? (
                                     <>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleStartCncTask(task)}
-                                            disabled={startingTaskId === task.id}
-                                            className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
-                                        >
-                                            <Play size={16} fill="currentColor" />
-                                            {startingTaskId === task.id ? 'Starting...' : 'Start Task'}
-                                        </button>
+                                        {canStartCnc(task) ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleStartCncTask(task)}
+                                                disabled={startingTaskId === task.id}
+                                                className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <Play size={16} fill="currentColor" />
+                                                {startingTaskId === task.id ? 'Starting...' : 'Start Task'}
+                                            </button>
+                                        ) : canFinishCnc(task) ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleFinishCncTask(task)}
+                                                    disabled={startingTaskId === task.id}
+                                                    className="bg-success text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-tighter active:scale-95 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    <CheckCircle2 size={16} />
+                                                    {startingTaskId === task.id ? 'Finishing...' : 'Finish Task'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleWorkspace(task)}
+                                                    className="btn-ghost py-4 rounded-xl font-black text-[10px] uppercase tracking-tighter active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <ChevronDown size={14} className={`transition-transform ${expandedTaskId === task.id ? 'rotate-180' : ''}`} />
+                                                    Workflow
+                                                </button>
+                                            </>
+                                        ) : null}
                                         <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
-                                            Start the CNC task here, then use the MES workflow controls below for setup, first-piece approval, production, QC, rework, dispatch, or completion.
+                                            {canStartCnc(task)
+                                                ? 'Start the CNC task here, then use the MES workflow controls below for setup, first-piece approval, production, QC, rework, dispatch, or completion.'
+                                                : canFinishCnc(task)
+                                                    ? 'Use Finish Task to move into final inspection, or open the workflow to continue production and QC steps.'
+                                                    : task.status === 'final_inspection'
+                                                        ? 'This job is in final inspection. Open the workflow below to review the current MES status.'
+                                                        : 'This CNC job follows the MES workflow. Open the workspace below to continue the process.'}
                                         </div>
                                     </>
                                 ) : canControlWorkflow && canStart(task.status) ? (
