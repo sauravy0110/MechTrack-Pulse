@@ -155,6 +155,12 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     const focusTaskQueue = (filterValue, task) => {
         setTaskFilter(filterValue);
         if (task) {
+            if (task.machine_id && selectedMachine?.id !== task.machine_id) {
+                const machine = useAppStore.getState().machines.find((item) => item.id === task.machine_id);
+                if (machine) {
+                    setSelectedMachine(machine);
+                }
+            }
             setSelectedTask(task);
         }
     };
@@ -313,6 +319,29 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                     <div className="flex justify-between"><span>Delay Risk</span><span className={selectedTask.delay_probability > 0.5 ? 'text-danger' : 'text-success'}>{(selectedTask.delay_probability * 100).toFixed(0)}%</span></div>
                                 )}
                             </div>
+
+                            {(selectedTask.status === 'final_inspection' || selectedTask.rework_flag) && (
+                                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                                    {selectedTask.status === 'final_inspection' && canReviewTasks && (
+                                        <button
+                                            type="button"
+                                            onClick={() => focusTaskQueue('review', selectedTask)}
+                                            className="rounded-xl border border-accent/20 bg-accent/8 px-4 py-3 text-xs font-semibold text-accent transition hover:bg-accent/14"
+                                        >
+                                            Start Review
+                                        </button>
+                                    )}
+                                    {selectedTask.rework_flag && canSeeReworkQueue && (
+                                        <button
+                                            type="button"
+                                            onClick={() => focusTaskQueue('rework', selectedTask)}
+                                            className="rounded-xl border border-warning/20 bg-warning/10 px-4 py-3 text-xs font-semibold text-warning transition hover:bg-warning/14"
+                                        >
+                                            Open Rework
+                                        </button>
+                                    )}
+                                </div>
+                            )}
 
                             {canAssignTask && (
                                 <div className="mt-4 space-y-2">

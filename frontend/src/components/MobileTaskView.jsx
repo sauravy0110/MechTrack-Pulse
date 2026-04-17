@@ -25,6 +25,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const setTaskFilter = useAppStore((state) => state.setTaskFilter);
     const setTaskSort = useAppStore((state) => state.setTaskSort);
     const setSelectedTask = useAppStore((state) => state.setSelectedTask);
+    const setSelectedMachine = useAppStore((state) => state.setSelectedMachine);
     const userRole = useAuthStore((state) => state.user?.role);
     const [expandedTaskId, setExpandedTaskId] = useState('');
     const [deletingTaskId, setDeletingTaskId] = useState('');
@@ -105,6 +106,12 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
             setTaskFilter('rework');
         } else if (!filterTasks(tasks, taskFilter).some((item) => item.id === task.id)) {
             setTaskFilter('all');
+        }
+        if (task.machine_id) {
+            const machine = machines.find((item) => item.id === task.machine_id);
+            if (machine) {
+                setSelectedMachine(machine);
+            }
         }
         setSelectedTask(task);
         setExpandedTaskId((current) => current === task.id ? '' : task.id);
