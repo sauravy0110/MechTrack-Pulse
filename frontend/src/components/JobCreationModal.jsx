@@ -694,8 +694,10 @@ function StepPartDetails({
     operators,
 }) {
     const operatorOptions = (operators || [])
-        .filter((operator) => operator.is_on_duty && (operator.current_task_count || 0) < 5)
         .sort((a, b) => {
+            const aAvailable = a.is_on_duty && (a.current_task_count || 0) < 5 ? 0 : 1;
+            const bAvailable = b.is_on_duty && (b.current_task_count || 0) < 5 ? 0 : 1;
+            if (aAvailable !== bAvailable) return aAvailable - bAvailable;
             const prioritySkillDiff = (b.skill_score ?? 0) - (a.skill_score ?? 0);
             if (prioritySkillDiff !== 0) return prioritySkillDiff;
             const queueDiff = (a.current_task_count || 0) - (b.current_task_count || 0);
@@ -703,7 +705,7 @@ function StepPartDetails({
             return a.full_name.localeCompare(b.full_name);
         })
         .map((operator) => ({
-            label: `${operator.full_name} (${operator.current_task_count || 0}/5)${operator.skill_score != null ? ` • Skill ${Math.round(operator.skill_score)}` : ''}`,
+            label: `${operator.full_name} (${operator.current_task_count || 0}/5)${operator.is_on_duty ? ((operator.current_task_count || 0) >= 5 ? ' • Full' : ' • Available') : ' • Offline'}${operator.skill_score != null ? ` • Skill ${Math.round(operator.skill_score)}` : ''}`,
             value: operator.id,
         }));
 
@@ -749,9 +751,12 @@ function StepPartDetails({
             <SectionCard eyebrow="Planning" title="Assignment and scheduling" description="Choose the preferred machine, optionally pre-assign an operator, and set the urgency in one structured block.">
                 <div className="grid gap-4 md:grid-cols-3">
                     <SelectField label="Machine" value={selectedMachineId} onChange={setSelectedMachineId} options={machines.map((machine) => ({ label: machine.name, value: machine.id }))} placeholder="Assign later" />
-                    <SelectField label="Assign Operator" value={selectedOperatorId} onChange={setSelectedOperatorId} options={operatorOptions} placeholder="Auto / assign later" />
+                    <SelectField label="Assign Operator" value={selectedOperatorId} onChange={setSelectedOperatorId} options={operatorOptions} placeholder="Select operator manually or assign later" />
                     <SelectField label="Priority" value={priority} onChange={setPriority} options={PRIORITY_OPTIONS.map((item) => ({ label: item.charAt(0).toUpperCase() + item.slice(1), value: item }))} placeholder="Select priority" />
                 </div>
+                <p className="text-xs leading-6 text-text-secondary">
+                    All company operators are listed here for manual assignment. If you leave it blank, the job stays unassigned for later scheduling.
+                </p>
                 <div className="mt-4 grid gap-3 md:grid-cols-3">
                     <div className="rounded-2xl border border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">
                         <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-text-muted">Machine</div>
