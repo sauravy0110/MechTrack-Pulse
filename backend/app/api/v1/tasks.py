@@ -1280,6 +1280,39 @@ def mes_assign_route(
         },
     }
 
+
+@router.post("/{task_id}/start-cnc", status_code=status.HTTP_200_OK)
+def start_cnc_workflow_route(
+    task_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Start or resume the CNC workflow from the operator dashboard."""
+    task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
+    if current_user.role == "client":
+        raise HTTPException(status_code=403, detail="Clients cannot start CNC workflows")
+    if not is_cnc_job(task):
+        raise HTTPException(status_code=400, detail="This action is available only for CNC jobs")
+    if task.status not in {"assigned", "setup", "setup_done", "first_piece_approval", "in_progress", "qc_check", "final_inspection"}:
+        raise HTTPException(status_code=400, detail="CNC workflow can be started only after assignment")
+
+    if task.status == "assigned":
+        task.status = "setup"
+    if task.timer_started_at is None:
+        task.timer_started_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(task)
+    _broadcast_mes_task_update(
+        background_tasks,
+        current_user.company_id,
+        task,
+        message=f"CNC workflow started for '{task.title}'.",
+        severity="info",
+    )
+    return {"task": _task_to_response(task)}
+
 @router.post("/{task_id}/ai-setup-check")
 def ai_setup_check_route(
     task_id: UUID,

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import useAppStore, { filterTasks, sortTasks } from '../stores/appStore';
 import useAuthStore from '../stores/authStore';
 import TaskWorkspacePanel from './TaskWorkspacePanel';
+import api from '../api/client';
 
 const MotionDiv = motion.div;
 
@@ -27,6 +28,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const userRole = useAuthStore((state) => state.user?.role);
     const [expandedTaskId, setExpandedTaskId] = useState('');
     const [deletingTaskId, setDeletingTaskId] = useState('');
+    const [startingTaskId, setStartingTaskId] = useState('');
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
@@ -45,10 +47,30 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         if (hours > 0) return `${hours}h ${minutes}m`;
         return `${minutes}m`;
     };
+    const formatStartedAt = (value) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Not started';
 
     const handleStatusUpdate = async (taskId, nextStatus) => {
         try { await updateTaskStatus(taskId, nextStatus); }
         catch (error) { addAlert(error.message || 'Unable to update.', 'error'); }
+    };
+
+    const handleStartCncTask = async (task) => {
+        setStartingTaskId(task.id);
+        try {
+            const { data } = await api.post(`/tasks/${task.id}/start-cnc`);
+            if (data?.task) {
+                useAppStore.getState().updateTask(data.task);
+                setSelectedTask(data.task);
+            } else {
+                setSelectedTask(task);
+            }
+            setExpandedTaskId(task.id);
+            addAlert('CNC workflow started. MES controls are now open below.', 'success');
+        } catch (error) {
+            addAlert(error.response?.data?.detail || error.message || 'Unable to start CNC workflow.', 'error');
+        } finally {
+            setStartingTaskId('');
+        }
     };
 
     const toggleWorkspace = (task) => {
@@ -160,19 +182,30 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                                     <p className="mt-1 text-text-primary">{formatDeadline(task.estimated_completion)}</p>
                                 </div>
                                 <div className="glass-card rounded-xl px-3 py-2">
-                                    <p className="text-[10px] uppercase tracking-[0.16em] text-text-muted">Logged time</p>
+                                    <p className="text-[10px] uppercase tracking-[0.16em] text-text-muted">{isCNCJob(task) ? 'Started' : 'Logged time'}</p>
                                     <p className="mt-1 text-text-primary inline-flex items-center gap-1">
                                         <Clock3 size={12} />
-                                        {formatDuration(task.total_time_spent_seconds)}
+                                        {isCNCJob(task) ? formatStartedAt(task.timer_started_at) : formatDuration(task.total_time_spent_seconds)}
                                     </p>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 {isCNCJob(task) ? (
-                                    <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
-                                        This CNC job follows the MES workflow. Open the workspace to continue with material validation, setup, QC, rework, dispatch, or completion.
-                                    </div>
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleStartCncTask(task)}
+                                            disabled={startingTaskId === task.id}
+                                            className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <Play size={16} fill="currentColor" />
+                                            {startingTaskId === task.id ? 'Starting...' : 'Start Task'}
+                                        </button>
+                                        <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
+                                            Start the CNC task here, then use the MES workflow controls below for setup, first-piece approval, production, QC, rework, dispatch, or completion.
+                                        </div>
+                                    </>
                                 ) : canControlWorkflow && canStart(task.status) ? (
                                     <button onClick={() => handleStatusUpdate(task.id, 'in_progress')}
                                         className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2">

@@ -54,6 +54,10 @@ function normalizeLog(log) {
     };
 }
 
+function isCNCJob(task) {
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+}
+
 export default function TaskWorkspacePanel({ task, role, compact = false }) {
     const addAlert = useAppStore((state) => state.addAlert);
     const [logs, setLogs] = useState([]);
@@ -263,6 +267,7 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
 
     const containerClass = compact ? 'space-y-3' : 'space-y-4';
     const canUploadMedia = role !== 'client';
+    const showMesHeader = isCNCJob(task);
 
     return (
         <div className={containerClass}>
@@ -287,6 +292,26 @@ export default function TaskWorkspacePanel({ task, role, compact = false }) {
                 <div className="glass-card rounded-xl px-3 py-4 text-xs text-text-muted flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin" />
                     Loading task workspace...
+                </div>
+            )}
+
+            {showMesHeader && (
+                <div className="glass-card rounded-2xl border border-accent/20 bg-accent/5 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                        <div>
+                            <div className="text-xs font-bold uppercase tracking-[0.18em] text-accent">MES Workflow</div>
+                            <p className="mt-2 text-sm font-semibold text-text-primary">CNC execution controls are active for this job</p>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">
+                                Use the section below for setup, first-piece approval, production logging, QC, final inspection, dispatch, and completion.
+                            </p>
+                        </div>
+                        {task?.timer_started_at ? (
+                            <div className="rounded-xl border border-accent/20 bg-white/70 px-3 py-2 text-right">
+                                <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-text-muted">Started</div>
+                                <div className="mt-1 text-xs font-semibold text-text-primary">{formatDateTime(task.timer_started_at)}</div>
+                            </div>
+                        ) : null}
+                    </div>
                 </div>
             )}
 
