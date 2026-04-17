@@ -41,6 +41,8 @@ if settings.ENVIRONMENT != "testing":
 _COLUMN_MIGRATIONS = [
     # (table, column, SQL type)
     ("tasks", "deleted_at", "TIMESTAMPTZ"),
+    ("tasks", "operation_type", "VARCHAR(100)"),
+    ("tasks", "operation_other", "VARCHAR(255)"),
 ]
 
 
