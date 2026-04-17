@@ -1294,10 +1294,14 @@ def start_cnc_workflow_route(
         raise HTTPException(status_code=403, detail="Clients cannot start CNC workflows")
     if not is_cnc_job(task):
         raise HTTPException(status_code=400, detail="This action is available only for CNC jobs")
-    if task.status not in {"assigned", "setup", "setup_done", "first_piece_approval", "in_progress", "qc_check", "final_inspection"}:
-        raise HTTPException(status_code=400, detail="CNC workflow can be started only after assignment")
+    if not task.assigned_to:
+        raise HTTPException(status_code=400, detail="Assign an operator before starting the CNC workflow")
+    if task.status in {"completed", "dispatched"}:
+        raise HTTPException(status_code=400, detail="Completed or dispatched CNC jobs cannot be started again")
+    if task.status not in {"created", "planned", "ready", "assigned", "setup", "setup_done", "first_piece_approval", "in_progress", "qc_check", "final_inspection"}:
+        raise HTTPException(status_code=400, detail="This CNC job is not in a startable state yet")
 
-    if task.status == "assigned":
+    if task.status in {"created", "planned", "ready", "assigned"}:
         task.status = "setup"
     if task.timer_started_at is None:
         task.timer_started_at = datetime.now(timezone.utc)
