@@ -35,6 +35,8 @@ def migrate():
             ("drawing_url",       "TEXT"),
             ("material_type",     "VARCHAR(200)"),
             ("material_batch",    "VARCHAR(200)"),
+            ("operation_type",    "VARCHAR(100)"),
+            ("operation_other",   "VARCHAR(255)"),
             ("part_name",         "VARCHAR(200)"),
             ("rework_reason",     "TEXT"),
         ]

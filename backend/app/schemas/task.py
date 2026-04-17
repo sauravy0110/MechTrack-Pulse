@@ -62,6 +62,8 @@ class TaskResponse(BaseModel):
     part_name: str | None = None
     material_type: str | None = None
     material_batch: str | None = None
+    operation_type: str | None = None
+    operation_other: str | None = None
     drawing_url: str | None = None
     rework_reason: str | None = None
 

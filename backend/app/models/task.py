@@ -85,6 +85,8 @@ class Task(Base):
     drawing_url = Column(String(512), nullable=True)
     material_type = Column(String(100), nullable=True)
     material_batch = Column(String(100), nullable=True)
+    operation_type = Column(String(100), nullable=True)
+    operation_other = Column(String(255), nullable=True)
     part_name = Column(String(255), nullable=True)
     rework_reason = Column(Text, nullable=True, doc="Reason for most recent rework trigger")
 

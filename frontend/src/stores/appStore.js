@@ -716,7 +716,7 @@ const useAppStore = create((set, get) => ({
     closeJobCreationModal: () => set({ isJobCreationModalOpen: false }),
 
     // ── Create CNC Job (full flow) ───────────────────────
-    createCNCJob: async ({ title, description, priority, client_id, machine_id, part_name, material_type, material_batch, drawing_url, estimated_completion }) => {
+    createCNCJob: async ({ title, description, priority, client_id, machine_id, part_name, material_type, material_batch, operation_type, operation_other, drawing_url, estimated_completion }) => {
         set({ creatingTask: true });
         try {
             // Step 1: Create the base task
@@ -730,11 +730,13 @@ const useAppStore = create((set, get) => ({
             });
 
             // Step 2: Set CNC-specific fields
-            if (part_name || material_type || material_batch || drawing_url) {
+            if (part_name || material_type || material_batch || operation_type || operation_other || drawing_url) {
                 const { data: cncData } = await api.patch(`/tasks/${data.id}/cnc-fields`, {
                     part_name: part_name || null,
                     material_type: material_type || null,
                     material_batch: material_batch || null,
+                    operation_type: operation_type || null,
+                    operation_other: operation_type === 'Other' ? (operation_other || null) : null,
                     drawing_url: drawing_url || null,
                 });
                 Object.assign(data, cncData);

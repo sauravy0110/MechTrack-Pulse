@@ -20,6 +20,7 @@ const STEPS = [
 ];
 
 const MATERIAL_OPTIONS = ['EN8', 'EN9', 'EN24', 'SS304', 'SS316', 'MS', 'Mild Steel', 'Cast Iron', 'Alloy Steel', 'Aluminium 6061', 'Other'];
+const OPERATION_OPTIONS = ['Facing', 'Rough Turning', 'Finish Turning', 'Threading', 'Other'];
 const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'];
 
 function resolveMediaUrl(path) {
@@ -62,6 +63,8 @@ export default function JobCreationModal() {
     const [partName, setPartName] = useState('');
     const [materialType, setMaterialType] = useState('');
     const [materialBatch, setMaterialBatch] = useState('');
+    const [operationType, setOperationType] = useState('');
+    const [operationOther, setOperationOther] = useState('');
     const [selectedMachineId, setSelectedMachineId] = useState('');
     const [priority, setPriority] = useState('medium');
     const [description, setDescription] = useState('');
@@ -90,7 +93,7 @@ export default function JobCreationModal() {
             document.body.classList.add('modal-open');
         }
         return () => document.body.classList.remove('modal-open');
-    }, [isJobCreationModalOpen, fetchAIProviderStatus]);
+    }, [isJobCreationModalOpen, fetchAIProviderStatus, fetchClients, fetchMachines]);
 
     const resetState = () => {
         setStep(1); setError(''); setTaskId(null);
@@ -103,7 +106,7 @@ export default function JobCreationModal() {
             send_email: true,
         });
         setCreatedClientCreds(null);
-        setPartName(''); setMaterialType(''); setMaterialBatch(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
+        setPartName(''); setMaterialType(''); setMaterialBatch(''); setOperationType(''); setOperationOther(''); setSelectedMachineId(''); setPriority('medium'); setDescription('');
         setDrawingContext(''); setDrawingFile(null); setDrawingUploadedUrl(''); setDrawingUploading(false); setExtracting(false); setSpecs([]); setEditedSpecs({}); setExtractionMessage(''); setValidationSummary(null); setConfirming(false); setLocking(false);
     };
 
@@ -143,6 +146,8 @@ export default function JobCreationModal() {
         }
         if (target === 3) {
             if (!partName.trim()) { setError('Part name is required.'); return; }
+            if (!operationType) { setError('Please select the machining operation.'); return; }
+            if (operationType === 'Other' && !operationOther.trim()) { setError('Please specify the custom operation.'); return; }
 
             // Create the CNC job if not created yet
             if (!taskId) {
@@ -156,6 +161,8 @@ export default function JobCreationModal() {
                         part_name: partName,
                         material_type: materialType || null,
                         material_batch: materialBatch || null,
+                        operation_type: operationType || null,
+                        operation_other: operationType === 'Other' ? operationOther : null,
                     });
                     setTaskId(job.id);
                 } catch (e) {
@@ -201,11 +208,9 @@ export default function JobCreationModal() {
             setError('Upload a drawing image or paste drawing details before AI extraction.');
             return;
         }
-        if (drawingUploadedUrl && !drawingContext.trim() && aiProviderStatus?.vision_enabled !== true) {
+        if (drawingUploadedUrl && !drawingContext.trim() && aiProviderStatus?.enabled !== true) {
             setError(
-                aiProviderStatus?.enabled
-                    ? 'Image OCR needs OPENROUTER_MODEL_VISION. Paste drawing text or add a vision-capable OpenRouter model.'
-                    : 'Image OCR needs OPENROUTER_API_KEY and OPENROUTER_MODEL_VISION. Paste drawing text or configure AI first.'
+                'Image OCR needs OPENROUTER_API_KEY. Paste drawing text or configure OpenRouter to use the free vision-capable router.'
             );
             return;
         }
@@ -364,6 +369,8 @@ export default function JobCreationModal() {
                             partName={partName} setPartName={setPartName}
                             materialType={materialType} setMaterialType={setMaterialType}
                             materialBatch={materialBatch} setMaterialBatch={setMaterialBatch}
+                            operationType={operationType} setOperationType={setOperationType}
+                            operationOther={operationOther} setOperationOther={setOperationOther}
                             selectedMachineId={selectedMachineId} setSelectedMachineId={setSelectedMachineId}
                             priority={priority} setPriority={setPriority}
                             description={description} setDescription={setDescription}
@@ -379,7 +386,7 @@ export default function JobCreationModal() {
                             drawingUploadedUrl={drawingUploadedUrl}
                             drawingUploading={drawingUploading}
                             onDrawingUpload={handleDrawingUpload}
-                            specs={specs} onExtract={handleExtract} extracting={extracting}
+                            specs={specs}
                             onSpecEdit={handleSpecEdit}
                             editedSpecs={editedSpecs}
                             extractionMessage={extractionMessage}
@@ -392,8 +399,10 @@ export default function JobCreationModal() {
                     {/* ─── STEP 4: Verify & Lock ─── */}
                     {step === 4 && (
                         <StepVerifyLock
-                            specs={specs} taskId={taskId}
+                            specs={specs}
                             partName={partName} materialType={materialType}
+                            operationType={operationType}
+                            operationOther={operationOther}
                             priority={priority}
                         />
                     )}
@@ -464,169 +473,176 @@ export default function JobCreationModal() {
 
 function StepClient({ clientMode, setClientMode, selectedClientId, setSelectedClientId, newClient, setNewClient, clients, createdClientCreds }) {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ fontSize: '13px', color: 'var(--text-muted)',  marginBottom: '4px' }}>
-                Associate this job with a client for progress visibility and portal access.
-            </div>
-
-            {/* Mode toggle */}
-            <div style={{ display: 'flex', gap: '8px' }}>
-                {[{ id: 'existing', label: '📋 Existing Client' }, { id: 'new', label: '➕ New Client' }].map((m) => (
-                    <button
-                        key={m.id}
-                        onClick={() => setClientMode(m.id)}
-                        style={{
-                            flex: 1, padding: '10px', borderRadius: '10px', fontSize: '13px', fontWeight: 600,
-                            background: clientMode === m.id ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.04)',
-                            border: `1px solid ${clientMode === m.id ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                            color: clientMode === m.id ? '#A5B4FC' : 'var(--text-muted)',
-                            cursor: 'pointer',
-                        }}
-                    >
-                        {m.label}
-                    </button>
-                ))}
-            </div>
+        <div className="space-y-5">
+            <SectionCard
+                eyebrow="Client Link"
+                title="Choose how this job should be attached"
+                description="Link an existing client for visibility, or create a polished client record before the CNC job moves forward."
+            >
+                <div className="grid gap-3 md:grid-cols-2">
+                    {[{ id: 'existing', label: 'Existing Client', hint: 'Pick from the active client list' }, { id: 'new', label: 'New Client', hint: 'Create a portal-ready client profile' }].map((mode) => {
+                        const active = clientMode === mode.id;
+                        return (
+                            <button
+                                key={mode.id}
+                                type="button"
+                                onClick={() => setClientMode(mode.id)}
+                                className={`rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-accent/35 bg-accent/10 shadow-[0_12px_30px_rgba(99,102,241,0.12)]' : 'border-border/70 bg-bg-hover/30 hover:border-accent/20 hover:bg-bg-hover/50'}`}
+                            >
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-text-secondary">{mode.label}</div>
+                                <p className="mt-2 text-sm text-text-primary">{mode.hint}</p>
+                            </button>
+                        );
+                    })}
+                </div>
+            </SectionCard>
 
             {clientMode === 'existing' && (
-                <div>
-                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
-                        SELECT CLIENT *
-                    </label>
+                <SectionCard eyebrow="Directory" title="Select the client" description="The selected client will receive progress visibility as the job moves through MES stages.">
                     {clients.length === 0 ? (
-                        <div style={{
-                            padding: '16px', borderRadius: '10px', textAlign: 'center',
-                            background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.1)',
-                            fontSize: '12px', color: 'var(--text-muted)',
-                        }}>
-                            No clients found. Switch to "New Client" to create one.
+                        <div className="rounded-2xl border border-dashed border-border/70 bg-bg-hover/25 px-5 py-8 text-center text-sm text-text-secondary">
+                            No clients found yet. Switch to <strong>New Client</strong> to create one here.
                         </div>
                     ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                            {clients.map((client) => (
-                                <div
-                                    key={client.id}
-                                    onClick={() => setSelectedClientId(client.id)}
-                                    style={{
-                                        display: 'flex', alignItems: 'center', gap: '12px',
-                                        padding: '12px 14px', borderRadius: '10px', cursor: 'pointer',
-                                        background: selectedClientId === client.id ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.02)',
-                                        border: `1px solid ${selectedClientId === client.id ? 'rgba(99,102,241,0.35)' : 'rgba(255,255,255,0.06)'}`,
-                                        transition: 'all 0.15s ease',
-                                    }}
-                                >
-                                    <div style={{
-                                        width: '36px', height: '36px', borderRadius: '50%',
-                                        background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                        fontSize: '14px', fontWeight: 700, color: 'white', flexShrink: 0,
-                                    }}>
-                                        {client.company_name?.[0]?.toUpperCase() || client.contact_person?.[0]?.toUpperCase() || '?'}
-                                    </div>
-                                    <div>
-                                        <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{client.company_name}</div>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                            {client.contact_person} • {client.email}
+                        <div className="grid gap-3">
+                            {clients.map((client) => {
+                                const active = selectedClientId === client.id;
+                                return (
+                                    <button
+                                        key={client.id}
+                                        type="button"
+                                        onClick={() => setSelectedClientId(client.id)}
+                                        className={`flex items-center gap-4 rounded-2xl border px-4 py-4 text-left transition ${active ? 'border-success/30 bg-success/10' : 'border-border/70 bg-bg-hover/30 hover:border-accent/20 hover:bg-bg-hover/50'}`}
+                                    >
+                                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,rgba(56,189,248,0.9),rgba(99,102,241,0.85))] text-sm font-bold text-white">
+                                            {client.company_name?.[0]?.toUpperCase() || client.contact_person?.[0]?.toUpperCase() || '?'}
                                         </div>
-                                    </div>
-                                    {selectedClientId === client.id && (
-                                        <span style={{ marginLeft: 'auto', color: '#34D399', fontSize: '16px' }}>✓</span>
-                                    )}
-                                </div>
-                            ))}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="truncate text-sm font-semibold text-text-primary">{client.company_name}</div>
+                                            <div className="mt-1 truncate text-xs text-text-secondary">{client.contact_person || 'No contact'} • {client.email || 'No email'}</div>
+                                        </div>
+                                        <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${active ? 'border-success/30 bg-success/12 text-success' : 'border-border/70 bg-bg-hover/40 text-text-muted'}`}>
+                                            {active ? 'Selected' : 'Choose'}
+                                        </div>
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
-                </div>
+                </SectionCard>
             )}
 
             {clientMode === 'new' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {createdClientCreds && (
-                        <div style={{
-                            padding: '12px 16px', borderRadius: '10px',
-                            background: 'rgba(52,211,153,0.1)', border: '1px solid rgba(52,211,153,0.25)',
-                        }}>
-                            <div style={{ fontSize: '12px', fontWeight: 700, color: '#34D399', marginBottom: '8px' }}>
-                                ✅ Client created! Share these credentials:
+                <SectionCard eyebrow="Client Intake" title="Create a clean client profile" description="This layout is tuned for quick data entry so email, phone, and company information stay readable and easy to review.">
+                    <div className="space-y-4">
+                        {createdClientCreds && (
+                            <div className="rounded-2xl border border-success/25 bg-success/8 p-4">
+                                <div className="text-xs font-bold uppercase tracking-[0.18em] text-success">Credentials Ready</div>
+                                <div className="mt-3 space-y-1 font-mono text-xs text-text-primary">
+                                    <div>Client ID: {createdClientCreds.client_id}</div>
+                                    <div>Username: {createdClientCreds.username}</div>
+                                    <div>Temp Password: {createdClientCreds.temp_password}</div>
+                                </div>
+                                <p className="mt-2 text-[11px] text-text-secondary">The client will be asked to change the password after first login.</p>
+                                <button
+                                    type="button"
+                                    onClick={() => navigator.clipboard.writeText(`Client ID: ${createdClientCreds.client_id}\nUsername: ${createdClientCreds.username}\nTemp Password: ${createdClientCreds.temp_password}`)}
+                                    className="mt-3 rounded-xl border border-success/30 bg-success/12 px-3 py-2 text-xs font-semibold text-success"
+                                >
+                                    Copy Credentials
+                                </button>
                             </div>
-                            <div style={{ fontFamily: 'monospace', fontSize: '12px', color: 'var(--text-primary)' }}>
-                                <div>Client ID: {createdClientCreds.client_id}</div>
-                                <div>Username: {createdClientCreds.username}</div>
-                                <div>Temp Password: <strong>{createdClientCreds.temp_password}</strong></div>
-                            </div>
-                            <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.4)', marginTop: '6px' }}>
-                                Client must change password on first login.
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => navigator.clipboard.writeText(`Client ID: ${createdClientCreds.client_id}\nUsername: ${createdClientCreds.username}\nTemp Password: ${createdClientCreds.temp_password}`)}
-                                style={{
-                                    marginTop: '10px',
-                                    padding: '8px 12px',
-                                    borderRadius: '8px',
-                                    border: '1px solid rgba(52,211,153,0.3)',
-                                    background: 'rgba(52,211,153,0.15)',
-                                    color: '#34D399',
-                                    fontSize: '11px',
-                                    fontWeight: 700,
-                                    cursor: 'pointer',
-                                }}
-                            >
-                                Copy Credentials
-                            </button>
+                        )}
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <FormField label="Company Name *" value={newClient.company_name} onChange={(v) => setNewClient((p) => ({ ...p, company_name: v }))} placeholder="Acme Motion Pvt Ltd" />
+                            <FormField label="Contact Person *" value={newClient.contact_person} onChange={(v) => setNewClient((p) => ({ ...p, contact_person: v }))} placeholder="Riya Shah" />
+                            <FormField label="Client Email *" type="email" value={newClient.email} onChange={(v) => setNewClient((p) => ({ ...p, email: v }))} placeholder="riya@acmemotion.com" />
+                            <FormField label="Phone" value={newClient.phone} onChange={(v) => setNewClient((p) => ({ ...p, phone: v }))} placeholder="+91 98765 43210" />
                         </div>
-                    )}
-                    <FormField label="Company Name *" value={newClient.company_name} onChange={(v) => setNewClient((p) => ({ ...p, company_name: v }))} placeholder="Acme Motion Pvt Ltd" />
-                    <FormField label="Contact Person *" value={newClient.contact_person} onChange={(v) => setNewClient((p) => ({ ...p, contact_person: v }))} placeholder="Riya Shah" />
-                    <FormField label="Email *" type="email" value={newClient.email} onChange={(v) => setNewClient((p) => ({ ...p, email: v }))} placeholder="client@company.com" />
-                    <FormField label="Phone" value={newClient.phone} onChange={(v) => setNewClient((p) => ({ ...p, phone: v }))} placeholder="+91 9876543210" />
-                    <FormField label="Address" value={newClient.address} onChange={(v) => setNewClient((p) => ({ ...p, address: v }))} placeholder="Plant / billing address" multiline />
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-muted)' }}>
-                        <input
-                            type="checkbox"
-                            checked={newClient.send_email}
-                            onChange={(e) => setNewClient((p) => ({ ...p, send_email: e.target.checked }))}
-                        />
-                        Email credentials automatically after creation
-                    </label>
-                </div>
+
+                        <FormField label="Address" value={newClient.address} onChange={(v) => setNewClient((p) => ({ ...p, address: v }))} placeholder="Factory address, billing address, or dispatch location" multiline />
+
+                        <label className="flex items-center gap-3 rounded-2xl border border-border/70 bg-bg-hover/30 px-4 py-3 text-sm text-text-secondary">
+                            <input
+                                type="checkbox"
+                                checked={newClient.send_email}
+                                onChange={(e) => setNewClient((p) => ({ ...p, send_email: e.target.checked }))}
+                                className="h-4 w-4 accent-[var(--accent)]"
+                            />
+                            Send login credentials automatically after the client is created
+                        </label>
+                    </div>
+                </SectionCard>
             )}
         </div>
     );
 }
 
-function StepPartDetails({ partName, setPartName, materialType, setMaterialType, materialBatch, setMaterialBatch, selectedMachineId, setSelectedMachineId, priority, setPriority, description, setDescription, machines }) {
+function StepPartDetails({
+    partName,
+    setPartName,
+    materialType,
+    setMaterialType,
+    materialBatch,
+    setMaterialBatch,
+    operationType,
+    setOperationType,
+    operationOther,
+    setOperationOther,
+    selectedMachineId,
+    setSelectedMachineId,
+    priority,
+    setPriority,
+    description,
+    setDescription,
+    machines,
+}) {
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <FormField label="Part Name / Job Title *" value={partName} onChange={setPartName} placeholder="e.g. CNC Shaft Step-3, Drive Shaft φ60" />
-            <FormField label="Description" value={description} onChange={setDescription} placeholder="Brief job description (optional)" multiline />
+        <div className="space-y-5">
+            <SectionCard
+                eyebrow="Job Identity"
+                title="Define the CNC work clearly"
+                description="This step now groups the job title, material, operation, machine, and priority into a cleaner planning layout."
+            >
+                <div className="space-y-4">
+                    <FormField label="Part Name / Job Title *" value={partName} onChange={setPartName} placeholder="Drive shaft step turning for batch A" />
+                    <FormField label="Description" value={description} onChange={setDescription} placeholder="Add customer notes, tolerance reminders, setup instructions, or inspection context" multiline />
+                </div>
+            </SectionCard>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>MATERIAL TYPE</label>
-                    <select value={materialType} onChange={(e) => setMaterialType(e.target.value)} className="input-glass" style={{ width: '100%', cursor: 'pointer' }}>
-                        <option value="">Select material…</option>
-                        {MATERIAL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+            <SectionCard eyebrow="Material + Operation" title="Capture the machining inputs" description="Material and operation selection now sit together so operators understand what process this job is entering.">
+                <div className="grid gap-4 md:grid-cols-2">
+                    <SelectField label="Material Type" value={materialType} onChange={setMaterialType} options={MATERIAL_OPTIONS} placeholder="Select material" />
+                    <FormField label="Material Batch No." value={materialBatch} onChange={setMaterialBatch} placeholder="BT-2024-007" />
+                    <SelectField
+                        label="Operation *"
+                        value={operationType}
+                        onChange={(value) => {
+                            setOperationType(value);
+                            if (value !== 'Other') {
+                                setOperationOther('');
+                            }
+                        }}
+                        options={OPERATION_OPTIONS}
+                        placeholder="Select operation"
+                    />
+                    {operationType === 'Other' ? (
+                        <FormField label="Other Operation *" value={operationOther} onChange={setOperationOther} placeholder="Enter the custom machining operation" />
+                    ) : (
+                        <div className="rounded-2xl border border-dashed border-border/70 bg-bg-hover/25 px-4 py-4 text-sm text-text-secondary">
+                            Choose <strong>Other</strong> to type a custom operation name.
+                        </div>
+                    )}
                 </div>
-                <FormField label="Material Batch No." value={materialBatch} onChange={setMaterialBatch} placeholder="e.g. BT-2024-007" />
-            </div>
+            </SectionCard>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                <div>
-                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>MACHINE (OPTIONAL)</label>
-                    <select value={selectedMachineId} onChange={(e) => setSelectedMachineId(e.target.value)} className="input-glass" style={{ width: '100%', cursor: 'pointer' }}>
-                        <option value="">Assign later…</option>
-                        {machines.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-                    </select>
+            <SectionCard eyebrow="Planning" title="Assignment preferences" description="Set the preferred machine now or leave it open for later scheduling.">
+                <div className="grid gap-4 md:grid-cols-2">
+                    <SelectField label="Machine" value={selectedMachineId} onChange={setSelectedMachineId} options={machines.map((machine) => ({ label: machine.name, value: machine.id }))} placeholder="Assign later" />
+                    <SelectField label="Priority" value={priority} onChange={setPriority} options={PRIORITY_OPTIONS.map((item) => ({ label: item.charAt(0).toUpperCase() + item.slice(1), value: item }))} placeholder="Select priority" />
                 </div>
-                <div>
-                    <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>PRIORITY</label>
-                    <select value={priority} onChange={(e) => setPriority(e.target.value)} className="input-glass" style={{ width: '100%', cursor: 'pointer' }}>
-                        {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>)}
-                    </select>
-                </div>
-            </div>
+            </SectionCard>
         </div>
     );
 }
@@ -640,8 +656,6 @@ function StepAISpecs({
     drawingUploading,
     onDrawingUpload,
     specs,
-    onExtract,
-    extracting,
     onSpecEdit,
     editedSpecs,
     extractionMessage,
@@ -714,9 +728,9 @@ function StepAISpecs({
                         </div>
                         <p className="mt-2 text-xs leading-6 text-text-secondary">
                             {visionReady
-                                ? 'Uploaded drawings will be sent to the configured OpenRouter vision model, with text parsing as backup.'
+                                ? 'Uploaded drawings will use the configured OpenRouter vision model with the free fallback route and text parsing as backup.'
                                 : aiReady
-                                    ? 'OpenRouter is connected, but image OCR needs OPENROUTER_MODEL_VISION. Pasted drawing text will still extract accurately.'
+                                    ? 'OpenRouter is connected and image OCR will fall back to the free OpenRouter router when no dedicated vision model is set. Pasted drawing text still gives the cleanest results.'
                                     : 'No OpenRouter key is configured. Uploads are stored, but accurate extraction will rely on pasted drawing text and manual verification.'}
                         </p>
                     </div>
@@ -901,15 +915,21 @@ function StepAISpecs({
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '300px', margin: '0 auto' }}>
                         Upload the drawing, paste any readable text you have, and extract the spec table before human verification.
                     </div>
+                    {extractionMessage ? (
+                        <div className="mx-auto mt-4 max-w-[420px] rounded-2xl border border-warning/20 bg-warning/8 px-4 py-3 text-left text-xs leading-6 text-text-secondary">
+                            {extractionMessage}
+                        </div>
+                    ) : null}
                 </div>
             )}
         </div>
     );
 }
 
-function StepVerifyLock({ specs, taskId, partName, materialType, priority }) {
+function StepVerifyLock({ specs, partName, materialType, operationType, operationOther, priority }) {
     const confirmedCount = specs.filter((s) => s.is_confirmed).length;
     const allConfirmed = confirmedCount === specs.length && specs.length > 0;
+    const operationLabel = operationType === 'Other' ? operationOther || 'Other' : operationType || 'Not specified';
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -930,6 +950,7 @@ function StepVerifyLock({ specs, taskId, partName, materialType, priority }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <SummaryRow icon="📋" label="Part Name" value={partName} />
                 <SummaryRow icon="🔩" label="Material" value={materialType || 'Not specified'} />
+                <SummaryRow icon="🛠️" label="Operation" value={operationLabel} />
                 <SummaryRow icon="🎯" label="Priority" value={priority?.toUpperCase()} />
                 <SummaryRow icon="📏" label="Specs Confirmed" value={`${confirmedCount} / ${specs.length} fields`} />
             </div>
@@ -964,24 +985,67 @@ function SummaryRow({ icon, label, value }) {
     );
 }
 
+function SectionCard({ eyebrow, title, description, children }) {
+    return (
+        <section className="glass-card rounded-[26px] border border-border/70 p-5">
+            <div className="mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-accent">{eyebrow}</p>
+                <h3 className="mt-2 text-xl font-display text-text-primary">{title}</h3>
+                {description ? <p className="mt-2 text-sm leading-6 text-text-secondary">{description}</p> : null}
+            </div>
+            {children}
+        </section>
+    );
+}
+
 function FormField({ label, value, onChange, placeholder, type = 'text', multiline = false }) {
-    const style = {
-        width: '100%', padding: '10px 12px', boxSizing: 'border-box',
-        borderRadius: '8px', background: 'rgba(255,255,255,0.05)',
-        border: '1px solid rgba(255,255,255,0.09)', color: 'var(--text-primary)',
-        fontSize: '13px', outline: 'none',
-        transition: 'border-color 0.2s',
-    };
+    const baseClass = 'input-glass w-full rounded-2xl border border-border/70 bg-bg-hover/35 px-4 py-3 text-sm text-text-primary placeholder:text-text-muted/80';
+
     return (
         <div>
-            <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block', fontWeight: 600, letterSpacing: '0.03em' }}>
+            <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-text-secondary">
                 {label}
             </label>
             {multiline ? (
-                <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={{ ...style, minHeight: '64px', resize: 'vertical', lineHeight: 1.5 }} />
+                <textarea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    className={`${baseClass} min-h-[110px] resize-y leading-6`}
+                />
             ) : (
-                <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} style={style} className="input-glass" />
+                <input
+                    type={type}
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                    className={baseClass}
+                />
             )}
+        </div>
+    );
+}
+
+function SelectField({ label, value, onChange, options, placeholder }) {
+    const normalizedOptions = options.map((option) => (
+        typeof option === 'string'
+            ? { label: option, value: option }
+            : option
+    ));
+
+    return (
+        <div>
+            <label className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-text-secondary">
+                {label}
+            </label>
+            <select
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className="input-glass w-full cursor-pointer rounded-2xl border border-border/70 bg-bg-hover/35 px-4 py-3 text-sm text-text-primary"
+            >
+                <option value="">{placeholder}</option>
+                {normalizedOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
         </div>
     );
 }

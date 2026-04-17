@@ -120,6 +120,8 @@ def _task_to_response(task) -> TaskResponse:
         part_name=task.part_name,
         material_type=task.material_type,
         material_batch=task.material_batch,
+        operation_type=task.operation_type,
+        operation_other=task.operation_other,
         drawing_url=task.drawing_url,
         rework_reason=task.rework_reason,
     )
@@ -644,6 +646,8 @@ class CNCFieldsRequest(BaseModel):
     part_name: str | None = None
     material_type: str | None = None
     material_batch: str | None = None
+    operation_type: str | None = Field(None, max_length=100)
+    operation_other: str | None = Field(None, max_length=255)
     drawing_url: str | None = None
 
 
@@ -1122,6 +1126,12 @@ def update_cnc_fields_route(
         task.material_type = request.material_type
     if request.material_batch is not None:
         task.material_batch = request.material_batch
+    if request.operation_type is not None:
+        task.operation_type = request.operation_type
+        if request.operation_type != "Other":
+            task.operation_other = None
+    if request.operation_other is not None:
+        task.operation_other = request.operation_other if task.operation_type == "Other" else None
     if request.drawing_url is not None:
         task.drawing_url = request.drawing_url
 

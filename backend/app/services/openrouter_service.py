@@ -33,7 +33,7 @@ def openrouter_enabled() -> bool:
 
 
 def openrouter_vision_enabled() -> bool:
-    return openrouter_enabled() and bool(_clean(settings.OPENROUTER_MODEL_VISION))
+    return openrouter_enabled()
 
 
 def _headers() -> dict[str, str]:
@@ -241,6 +241,7 @@ def _chat_text(
 
 def get_openrouter_status() -> dict[str, Any]:
     api_key = _clean(settings.OPENROUTER_API_KEY)
+    resolved_vision_model = _clean(settings.OPENROUTER_MODEL_VISION) or FREE_MODELS_ROUTER
     status = {
         "enabled": bool(api_key),
         "configured": bool(api_key),
@@ -251,7 +252,7 @@ def get_openrouter_status() -> dict[str, Any]:
             "fast": settings.OPENROUTER_MODEL_FAST,
             "coder": settings.OPENROUTER_MODEL_CODER,
             "reasoning": settings.OPENROUTER_MODEL_REASONING,
-            "vision": settings.OPENROUTER_MODEL_VISION,
+            "vision": resolved_vision_model,
         },
     }
     if not api_key:

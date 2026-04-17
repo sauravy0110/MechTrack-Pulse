@@ -167,6 +167,50 @@ def test_drawing_text_extraction_preserves_real_dimensions(client, platform_admi
     assert specs_map["Runout_Tolerance"] == "0.02"
 
 
+def test_extract_specs_does_not_fabricate_defaults_when_text_is_unreadable(client, platform_admin_token):
+    owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
+    task = create_task(client, owner_token, "Unreadable OCR", machine_id, operator_id)
+    task_id = task["id"]
+
+    extract_response = client.post(
+        f"/api/v1/job-specs/{task_id}/extract",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "part_name": "Unreadable OCR",
+            "drawing_context": "scale 1:2 drawing no 104 rev 6 sheet 1 checked by QA date 2026",
+        },
+    )
+    assert extract_response.status_code == 200
+    payload = extract_response.json()
+
+    assert payload["status"] == "warning"
+    assert payload["source"] == "manual_review"
+    assert payload["specs"] == []
+
+
+def test_cnc_fields_persist_operation_selection(client, platform_admin_token):
+    owner_token, operator_id, machine_id = bootstrap_company(client, platform_admin_token)
+    task = create_task(client, owner_token, "Operation Capture", machine_id, operator_id)
+    task_id = task["id"]
+
+    response = client.patch(
+        f"/api/v1/tasks/{task_id}/cnc-fields",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={
+            "part_name": "Operation Capture",
+            "material_type": "EN24",
+            "material_batch": "BATCH-01",
+            "operation_type": "Other",
+            "operation_other": "Chamfering Pass",
+        },
+    )
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["operation_type"] == "Other"
+    assert payload["operation_other"] == "Chamfering Pass"
+
+
 def test_strict_ocr_pipeline_normalizes_threads_and_validation_states():
     ocr_payload = _normalize_ocr_payload(
         {

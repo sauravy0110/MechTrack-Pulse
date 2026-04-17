@@ -273,28 +273,23 @@ def extract_drawing_specs(
             "specs": extracted_specs,
         }
 
-    # ── Fallback: Generate plausible CNC shaft defaults ─────
-    # Realistic values for a typical industrial shaft
-    base_values = _generate_shaft_defaults(part_name or task.title)
-    for field_data in base_values:
-        extracted_specs.append(field_data)
-
-    _persist_specs(db, company_id, task_id, extracted_specs)
-    note_text = f" {' '.join(extraction_notes)}" if extraction_notes else ""
+    note_text = " ".join(note for note in extraction_notes if note).strip()
     return {
-        "status": "success",
-        "source": "ai_heuristic",
-        "confidence": "medium",
+        "status": "warning",
+        "source": "manual_review",
+        "confidence": "low",
         "message": (
-            "AI generated standard CNC shaft parameters. "
-            "Please verify each value against the actual drawing before locking."
-            f"{note_text}"
+            "No reliable drawing specs could be extracted from the uploaded image/text. "
+            "Paste clearer drawing text or use a sharper image before locking the job."
+            + (f" {note_text}" if note_text else "")
         ).strip(),
         "validation_summary": {
-            "accepted_fields": [item["field_name"] for item in extracted_specs],
-            "review_counts": {"high_confidence": 0, "medium_review": len(extracted_specs), "invalid": 0},
+            "accepted_fields": [],
+            "rejected_fields": [],
+            "review_counts": {"high_confidence": 0, "medium_review": 0, "invalid": 0},
+            "raw_text_present": bool((drawing_context or "").strip()),
         },
-        "specs": extracted_specs,
+        "specs": [],
     }
 
 
@@ -403,37 +398,23 @@ def parse_dimensions(text: str | None) -> dict[str, list[str]]:
     ])
 
     lengths: list[str] = []
-    for match in re.finditer(r"\b\d+(?:\.\d+)?\b", normalized_text):
-        value = match.group(0)
-        decimal_value = _to_decimal(value)
-        if decimal_value is None or decimal_value < Decimal("1") or decimal_value > Decimal("500"):
-            continue
+    anchored_length_patterns = [
+        r"(?:overall\s*length|overall|o\/?a\s*length|total\s*length|length)\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(?:mm)?",
+        r"(?:step\s*lengths?|segment\s*lengths?)\s*[:=]?\s*((?:\d+(?:\.\d+)?\s*){1,12})",
+    ]
+    for pattern in anchored_length_patterns:
+        for match in re.finditer(pattern, normalized_text, flags=re.IGNORECASE):
+            if _is_in_title_block_context(normalized_text, match.start(), match.end()):
+                continue
+            values = re.findall(r"\d+(?:\.\d+)?", match.group(1))
+            for value in values:
+                decimal_value = _to_decimal(value)
+                if decimal_value is None or decimal_value < Decimal("1") or decimal_value > Decimal("500"):
+                    continue
+                lengths.append(value)
 
-        start = match.start()
-        end = match.end()
-        prefix = normalized_text[max(0, start - 4):start]
-        suffix = normalized_text[end:end + 8]
-        context = _context_window(normalized_text, start, end)
-
-        # Skip values already captured by symbol-based parsers
-        if "Ø" in prefix or "⌀" in prefix:
-            continue
-        if re.search(r"\bR\s*$", prefix, flags=re.IGNORECASE):
-            continue
-        if re.search(r"\bM\s*$", prefix, flags=re.IGNORECASE):
-            continue
-        if "°" in suffix or suffix.lower().startswith("deg"):
-            continue
-        # Skip tolerance-related values
-        if re.search(r"\b(?:runout|concentricity|roughness|tolerance|tol|ra)\b", context, flags=re.IGNORECASE):
-            continue
-        # Skip values in title block / scale / metadata context
-        if _is_in_title_block_context(normalized_text, start, end):
-            continue
-        # Skip values preceded by scale-like patterns (e.g. "1:" or ":2")
-        if re.search(r"\d\s*:\s*$", prefix) or re.search(r"^\s*:\s*\d", suffix):
-            continue
-        lengths.append(value)
+    if "step lengths" not in normalized_text.lower() and "segment lengths" not in normalized_text.lower():
+        lengths = _dedupe_preserve_order(lengths)
 
     return {
         "lengths_mm": lengths,
