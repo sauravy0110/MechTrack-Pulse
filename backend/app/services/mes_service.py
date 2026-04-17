@@ -36,6 +36,7 @@ MES_ACTIVE_STATUSES = (
     "paused",
     "qc_check",
     "final_inspection",
+    "submitted_for_review",
     "dispatched",
     "delayed",
 )
@@ -47,6 +48,7 @@ CNC_EXECUTION_STATUSES = {
     "in_progress",
     "qc_check",
     "final_inspection",
+    "submitted_for_review",
     "dispatched",
     "completed",
 }
@@ -75,6 +77,7 @@ def is_cnc_job(task: Task | None) -> bool:
             "first_piece_approval",
             "qc_check",
             "final_inspection",
+            "submitted_for_review",
             "dispatched",
         }
     )

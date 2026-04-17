@@ -40,7 +40,7 @@ class Task(Base):
         doc=(
             "General: idle | queued | in_progress | paused | completed | delayed | "
             "CNC: created | planned | ready | assigned | setup | setup_done | "
-            "first_piece_approval | qc_check | final_inspection | dispatched"
+            "first_piece_approval | qc_check | final_inspection | submitted_for_review | dispatched"
         ),
     )
     
@@ -89,6 +89,14 @@ class Task(Base):
     operation_other = Column(String(255), nullable=True)
     part_name = Column(String(255), nullable=True)
     rework_reason = Column(Text, nullable=True, doc="Reason for most recent rework trigger")
+    submitted_for_review_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    review_status = Column(String(20), nullable=True)
+    review_comment = Column(Text, nullable=True)
 
     # ── Timeline ─────────────────────────────────────────────
     estimated_completion = Column(DateTime(timezone=True), nullable=True)
@@ -124,6 +132,12 @@ class Task(Base):
     images = relationship("TaskImage", back_populates="task", lazy="dynamic")
     job_specs = relationship("JobSpec", back_populates="task", lazy="dynamic", cascade="all, delete-orphan")
     job_processes = relationship("JobProcess", back_populates="task", order_by="JobProcess.sequence_order", cascade="all, delete-orphan")
+    reviews = relationship(
+        "JobReview",
+        back_populates="job",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Task {self.title} [{self.status}] company={self.company_id}>"

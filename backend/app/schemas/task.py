@@ -55,6 +55,7 @@ class TaskResponse(BaseModel):
     machine_id: str | None = None
     estimated_completion: datetime | None = None
     actual_completion: datetime | None = None
+    submitted_for_review_at: datetime | None = None
     delay_probability: float | None = None
     total_time_spent_seconds: int
     timer_started_at: datetime | None = None
@@ -72,6 +73,9 @@ class TaskResponse(BaseModel):
     operation_other: str | None = None
     drawing_url: str | None = None
     rework_reason: str | None = None
+    reviewed_by: str | None = None
+    review_status: str | None = None
+    review_comment: str | None = None
 
     model_config = {"from_attributes": True}
 

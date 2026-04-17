@@ -9,7 +9,7 @@ import api from '../api/client';
 const MotionDiv = motion.div;
 
 function isCNCJob(task) {
-    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'submitted_for_review', 'dispatched'].includes(task?.status));
 }
 
 const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
@@ -32,7 +32,7 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     const [startingTaskId, setStartingTaskId] = useState('');
 
     const visibleTasks = useMemo(() => sortTasks(filterTasks(tasks, taskFilter), taskSort), [tasks, taskFilter, taskSort]);
-    const reviewTasks = useMemo(() => sortTasks(tasks.filter((task) => task.status === 'final_inspection'), 'time'), [tasks]);
+    const reviewTasks = useMemo(() => sortTasks(tasks.filter((task) => task.status === 'submitted_for_review'), 'time'), [tasks]);
     const reworkTasks = useMemo(() => sortTasks(tasks.filter((task) => task.rework_flag && task.status !== 'completed'), 'time'), [tasks]);
     const canCreateTask = userRole === 'owner' || userRole === 'supervisor';
     const canEditTask = userRole === 'owner' || userRole === 'supervisor';
@@ -54,7 +54,8 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
     };
     const formatStartedAt = (value) => value ? new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(value)) : 'Not started';
     const canStartCnc = (task) => ['created', 'planned', 'ready', 'assigned'].includes(task.status) && !task.timer_started_at;
-    const canFinishCnc = (task) => Boolean(task.timer_started_at) && !['completed', 'dispatched', 'final_inspection'].includes(task.status);
+    const canFinishCnc = (task) => Boolean(task.timer_started_at) && !['completed', 'dispatched', 'submitted_for_review'].includes(task.status);
+    const canSubmitForReview = (task) => task.status === 'final_inspection' && !task.timer_started_at;
 
     const handleStatusUpdate = async (taskId, nextStatus) => {
         try { await updateTaskStatus(taskId, nextStatus); }
@@ -99,8 +100,25 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
         }
     };
 
+    const handleSubmitForReview = async (task) => {
+        setStartingTaskId(task.id);
+        try {
+            const { data } = await api.post(`/tasks/${task.id}/submit-for-review`, { notes: task.review_comment || null });
+            if (data?.task) {
+                useAppStore.getState().updateTask(data.task);
+                setSelectedTask(data.task);
+            }
+            setExpandedTaskId(task.id);
+            addAlert('Job submitted for supervisor review.', 'success');
+        } catch (error) {
+            addAlert(error.response?.data?.detail || error.message || 'Unable to submit job for review.', 'error');
+        } finally {
+            setStartingTaskId('');
+        }
+    };
+
     const openTaskWorkspace = (task) => {
-        if (task.status === 'final_inspection' && canReviewTasks) {
+        if (task.status === 'submitted_for_review' && canReviewTasks) {
             setTaskFilter('review');
         } else if (task.rework_flag && task.status !== 'completed' && canSeeReworkQueue) {
             setTaskFilter('rework');
@@ -332,14 +350,26 @@ const MobileTaskView = memo(function MobileTaskView({ embedded = false }) {
                                                     Workflow
                                                 </button>
                                             </>
+                                        ) : canSubmitForReview(task) ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSubmitForReview(task)}
+                                                disabled={startingTaskId === task.id}
+                                                className="col-span-2 btn-primary py-4 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                            >
+                                                <CheckCircle2 size={16} />
+                                                {startingTaskId === task.id ? 'Submitting...' : 'Submit For Review'}
+                                            </button>
                                         ) : null}
                                         <div className="col-span-2 rounded-xl border border-accent/20 bg-accent/5 px-4 py-4 text-[11px] leading-5 text-text-secondary">
                                             {canStartCnc(task)
                                                 ? 'This job is assigned and ready. Start Task begins operator work and starts the timer.'
                                                 : canFinishCnc(task)
-                                                    ? 'Finish Task stops the timer and moves the job into final inspection. Open Workspace any time for detailed MES controls.'
-                                                    : task.status === 'final_inspection'
-                                                        ? 'This job is in final inspection. Open the workflow below to review the current MES status.'
+                                                    ? 'Finish Task stops the timer. Then submit the job for supervisor review from the workspace.'
+                                                    : canSubmitForReview(task)
+                                                        ? 'Production is complete. Submit this job so it enters the supervisor review queue.'
+                                                    : task.status === 'submitted_for_review'
+                                                        ? 'This job has been submitted for review. Open the workspace below to inspect the full review packet.'
                                                         : 'This CNC job follows the MES workflow. Open the workspace below to continue the process.'}
                                         </div>
                                     </>

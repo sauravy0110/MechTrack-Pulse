@@ -28,6 +28,7 @@ from app.models.ai_insight import AIInsight
 from app.models.report import Report
 from app.models.job_spec import JobSpec
 from app.models.job_process import JobProcess
+from app.models.job_review import JobReview
 
 __all__ = [
     "Company",
@@ -52,4 +53,5 @@ __all__ = [
     "Report",
     "JobSpec",
     "JobProcess",
+    "JobReview",
 ]

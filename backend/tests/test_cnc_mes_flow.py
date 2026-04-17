@@ -26,8 +26,6 @@ def bootstrap_company(client, platform_admin_token):
         json={"current_password": operator_data["temp_password"], "new_password": "OperatorPassword123!"},
     )
     operator_token = login_user(client, operator_email, "OperatorPassword123!")
-    client.post("/api/v1/operator/toggle-duty", headers={"Authorization": f"Bearer {operator_token}"})
-
     machine = create_machine(client, owner_token, "CNC Lathe 01")
     return owner_token, operator_data["id"], machine["id"]
 
@@ -401,6 +399,14 @@ def test_full_mes_flow_reaches_dispatch_and_completion(client, platform_admin_to
     assert final_ai.status_code == 200
     assert final_ai.json()["task"]["status"] == "final_inspection"
 
+    submit_for_review = client.post(
+        f"/api/v1/tasks/{task_id}/submit-for-review",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"notes": "Operator completed the run and submitted for approval."},
+    )
+    assert submit_for_review.status_code == 200
+    assert submit_for_review.json()["task"]["status"] == "submitted_for_review"
+
     approve = client.post(
         f"/api/v1/tasks/{task_id}/supervisor-final-decision",
         headers={"Authorization": f"Bearer {owner_token}"},
@@ -479,6 +485,14 @@ def test_rework_resets_flow_without_erasing_history(client, platform_admin_token
         f"/api/v1/tasks/{task_id}/ai-final-inspection",
         headers={"Authorization": f"Bearer {owner_token}"},
     )
+
+    submit_for_review = client.post(
+        f"/api/v1/tasks/{task_id}/submit-for-review",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"notes": "Needs supervisor review."},
+    )
+    assert submit_for_review.status_code == 200
+    assert submit_for_review.json()["task"]["status"] == "submitted_for_review"
 
     rework = client.post(
         f"/api/v1/tasks/{task_id}/supervisor-final-decision",

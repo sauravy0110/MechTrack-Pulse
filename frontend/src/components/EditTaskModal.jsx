@@ -12,7 +12,7 @@ import useAppStore from '../stores/appStore';
 
 const MATERIAL_OPTIONS = ['EN8', 'EN9', 'EN24', 'SS304', 'SS316', 'MS', 'Mild Steel', 'Cast Iron', 'Alloy Steel', 'Aluminium 6061', 'Other'];
 const OPERATION_OPTIONS = ['Facing', 'Rough Turning', 'Finish Turning', 'Threading', 'Other'];
-const CNC_STATUSES = new Set(['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched']);
+const CNC_STATUSES = new Set(['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'submitted_for_review', 'dispatched']);
 
 function isCNCJob(task) {
     return Boolean(task?.is_locked || task?.part_name || CNC_STATUSES.has(task?.status));

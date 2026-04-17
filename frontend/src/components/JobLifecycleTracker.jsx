@@ -14,6 +14,7 @@ const CNC_STAGES = [
     { key: 'in_progress',          label: 'Production',         icon: '🏭', desc: 'Full production running' },
     { key: 'qc_check',             label: 'QC Check',           icon: '📏', desc: 'In-process measurements' },
     { key: 'final_inspection',     label: 'Final Inspection',   icon: '🎯', desc: 'AI final inspection' },
+    { key: 'submitted_for_review', label: 'Submitted',          icon: '🧾', desc: 'Waiting for supervisor review' },
     { key: 'dispatched',           label: 'Dispatched',         icon: '🚚', desc: 'Packed and dispatched' },
     { key: 'completed',            label: 'Completed',          icon: '🏆', desc: 'Job completed' },
 ];

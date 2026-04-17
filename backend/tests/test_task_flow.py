@@ -36,9 +36,6 @@ def setup_owner_and_operator(client, platform_admin_token):
     })
     op_token = login_user(client, op_email, "OpPassword123!")
     
-    # Toggle to on-duty
-    client.post("/api/v1/operator/toggle-duty", headers={"Authorization": f"Bearer {op_token}"})
-    
     return {
         "owner_token": owner_token,
         "op_token": op_token,

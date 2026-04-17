@@ -21,6 +21,7 @@ ROLES:
   - Client: read-only
 """
 
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -66,12 +67,14 @@ from app.models.qc_report import QCReport
 from app.models.ai_report import AIReport
 from app.models.rework_log import ReworkLog
 from app.models.dispatch_record import DispatchRecord
+from app.models.job_review import JobReview
 from app.services.cnc_ai_service import get_rework_suggestion, analyze_setup_image, analyze_final_inspection
 from app.services.task_queue import dequeue_task, peek_queue, queue_size
 from app.services.ai_action_engine import evaluate_operator_load
 from app.services.operator_service import (
     MAX_TASKS_PER_OPERATOR,
     build_operator_payload,
+    decrement_task_count,
     find_best_operator,
     sync_operator_duty_state,
 )
@@ -94,7 +97,7 @@ router = APIRouter()
 CNC_STATUSES = {
     "idle", "queued", "in_progress", "paused", "completed", "delayed",
     "created", "planned", "ready", "assigned", "setup", "setup_done",
-    "first_piece_approval", "qc_check", "final_inspection", "dispatched",
+    "first_piece_approval", "qc_check", "final_inspection", "submitted_for_review", "dispatched",
 }
 
 
@@ -112,6 +115,7 @@ def _task_to_response(task) -> TaskResponse:
         machine_id=str(task.machine_id) if task.machine_id else None,
         estimated_completion=task.estimated_completion,
         actual_completion=task.actual_completion,
+        submitted_for_review_at=task.submitted_for_review_at,
         total_time_spent_seconds=task.total_time_spent_seconds,
         timer_started_at=task.timer_started_at,
         delay_reason=task.delay_reason,
@@ -129,6 +133,9 @@ def _task_to_response(task) -> TaskResponse:
         operation_other=task.operation_other,
         drawing_url=task.drawing_url,
         rework_reason=task.rework_reason,
+        reviewed_by=str(task.reviewed_by) if task.reviewed_by else None,
+        review_status=task.review_status,
+        review_comment=task.review_comment,
     )
 
 
@@ -688,6 +695,10 @@ class SupervisorFinalDecisionRequest(BaseModel):
     remarks: str | None = Field(None, max_length=1000)
 
 
+class SubmitForReviewRequest(BaseModel):
+    notes: str | None = Field(None, max_length=1000)
+
+
 class DispatchRequest(BaseModel):
     packing_details: str | None = Field(None, max_length=1000)
     invoice_number: str | None = Field(None, max_length=120)
@@ -791,6 +802,19 @@ def _serialize_dispatch(item: DispatchRecord | None) -> dict | None:
     }
 
 
+def _serialize_review(item: JobReview | None) -> dict | None:
+    if not item:
+        return None
+    return {
+        "id": str(item.id),
+        "job_id": str(item.job_id),
+        "reviewer_id": str(item.reviewer_id) if item.reviewer_id else None,
+        "decision": item.decision,
+        "comment": item.comment,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
 def _build_mes_summary(db: Session, company_id: UUID, task: Task) -> dict:
     latest_assignment = (
         db.query(Assignment)
@@ -873,6 +897,36 @@ def _build_mes_summary(db: Session, company_id: UUID, task: Task) -> dict:
         .order_by(ReworkLog.created_at.desc())
         .all()
     )
+    production_logs = (
+        db.query(ProductionLog)
+        .filter(ProductionLog.company_id == company_id, ProductionLog.task_id == task.id)
+        .order_by(ProductionLog.created_at.desc())
+        .all()
+    )
+    images = (
+        db.query(TaskImage)
+        .filter(TaskImage.task_id == task.id)
+        .order_by(TaskImage.uploaded_at.desc())
+        .all()
+    )
+    reviews = (
+        db.query(JobReview)
+        .filter(JobReview.company_id == company_id, JobReview.job_id == task.id)
+        .order_by(JobReview.created_at.desc())
+        .all()
+    )
+    specs = (
+        db.query(JobSpec)
+        .filter(JobSpec.company_id == company_id, JobSpec.task_id == task.id)
+        .order_by(JobSpec.created_at.asc())
+        .all()
+    )
+    processes = (
+        db.query(JobProcess)
+        .filter(JobProcess.company_id == company_id, JobProcess.task_id == task.id)
+        .order_by(JobProcess.sequence_order.asc())
+        .all()
+    )
     return {
         "task": _task_to_response(task).model_dump(),
         "client": _client_payload_for_task(db, company_id, task),
@@ -895,6 +949,50 @@ def _build_mes_summary(db: Session, company_id: UUID, task: Task) -> dict:
                 "ai_recommendation": item.ai_recommendation or {},
             }
             for item in rework_history
+        ],
+        "production_logs": [
+            {
+                "id": str(item.id),
+                "produced_qty": item.produced_qty,
+                "rejected_qty": item.rejected_qty,
+                "downtime_minutes": item.downtime_minutes,
+                "notes": item.notes,
+                "created_at": item.created_at.isoformat(),
+            }
+            for item in production_logs
+        ],
+        "images": [
+            {
+                "id": str(item.id),
+                "image_url": item.image_url,
+                "uploaded_at": item.uploaded_at.isoformat(),
+                "uploaded_by": str(item.uploaded_by),
+            }
+            for item in images
+        ],
+        "latest_review": _serialize_review(reviews[0] if reviews else None),
+        "review_history": [_serialize_review(item) for item in reviews],
+        "specs": [
+            {
+                "id": str(item.id),
+                "field_name": item.field_name,
+                "required_value": item.human_value or item.ai_value,
+                "actual_value": item.human_value or item.ai_value,
+                "unit": item.unit,
+            }
+            for item in specs
+        ],
+        "processes": [
+            {
+                "id": str(item.id),
+                "operation_name": item.operation_name,
+                "sequence_order": item.sequence_order,
+                "tool_required": item.tool_required,
+                "cycle_time_minutes": item.cycle_time_minutes,
+                "machine_id": str(item.machine_id) if item.machine_id else None,
+                "notes": item.notes,
+            }
+            for item in processes
         ],
     }
 
@@ -1018,8 +1116,11 @@ async def trigger_rework_route(
     task.rework_flag = True
     task.rework_iteration = (task.rework_iteration or 0) + 1
     task.rework_reason = request.rework_reason
-    task.timer_started_at = None
-    task.status = "assigned" if task.assigned_to else "ready"
+    task.reviewed_by = current_user.id
+    task.review_status = "rework"
+    task.review_comment = request.rework_reason
+    task.status = "in_progress"
+    task.timer_started_at = datetime.now(timezone.utc)
 
     create_job_version(
         db,
@@ -1039,7 +1140,6 @@ async def trigger_rework_route(
         from uuid import UUID as _UUID
         try:
             task.assigned_to = _UUID(request.reassign_to)
-            task.status = "assigned"
         except Exception:
             pass  # Invalid UUID, keep existing assignment
 
@@ -1061,6 +1161,15 @@ async def trigger_rework_route(
         triggered_by=current_user.id,
         reason=request.rework_reason,
         ai_recommendation=ai_suggestion,
+    )
+    db.add(
+        JobReview(
+            company_id=current_user.company_id,
+            job_id=task.id,
+            reviewer_id=current_user.id,
+            decision="rework",
+            comment=request.rework_reason or "Rework requested",
+        )
     )
 
     record_audit_log(
@@ -1334,7 +1443,7 @@ def finish_cnc_workflow_route(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_password_changed),
 ):
-    """Finish the operator run and move the CNC job into final inspection."""
+    """Finish the operator run and stop active production time."""
     task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
     if current_user.role == "client":
         raise HTTPException(status_code=403, detail="Clients cannot finish CNC workflows")
@@ -1351,7 +1460,7 @@ def finish_cnc_workflow_route(
     delta = now - task.timer_started_at
     task.total_time_spent_seconds += max(int(delta.total_seconds()), 0)
     task.timer_started_at = None
-    if task.status not in {"final_inspection", "completed", "dispatched"}:
+    if task.status not in {"completed", "dispatched"}:
         task.status = "final_inspection"
 
     db.commit()
@@ -1361,6 +1470,61 @@ def finish_cnc_workflow_route(
         current_user.company_id,
         task,
         message=f"CNC task '{task.title}' moved to final inspection.",
+        severity="info",
+    )
+    return {"task": _task_to_response(task)}
+
+
+@router.post("/{task_id}/submit-for-review", status_code=status.HTTP_200_OK)
+def submit_for_review_route(
+    task_id: UUID,
+    request: SubmitForReviewRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_password_changed),
+):
+    """Operator submits the finished job for supervisor review."""
+    if current_user.role == "client":
+        raise HTTPException(status_code=403, detail="Clients cannot submit jobs for review")
+
+    task = _get_accessible_task_or_404(db, current_user.company_id, current_user, task_id)
+    if current_user.role == "operator" and task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only submit your assigned job for review")
+    if not is_cnc_job(task):
+        raise HTTPException(status_code=400, detail="This action is available only for CNC jobs")
+    if task.status not in {"final_inspection", "qc_check", "in_progress"}:
+        raise HTTPException(status_code=400, detail="Finish the CNC run before submitting for review")
+
+    if task.timer_started_at is not None:
+        now = datetime.now(timezone.utc)
+        delta = now - task.timer_started_at
+        task.total_time_spent_seconds += max(int(delta.total_seconds()), 0)
+        task.timer_started_at = None
+
+    task.status = "submitted_for_review"
+    task.submitted_for_review_at = datetime.now(timezone.utc)
+    task.reviewed_by = None
+    task.review_status = None
+    task.review_comment = request.notes
+
+    if request.notes:
+        note_entry, error = add_task_note(
+            db,
+            current_user.company_id,
+            task.id,
+            current_user,
+            request.notes,
+        )
+        if error or not note_entry:
+            raise HTTPException(status_code=400, detail=error or "Unable to record review submission note")
+
+    db.commit()
+    db.refresh(task)
+    _broadcast_mes_task_update(
+        background_tasks,
+        current_user.company_id,
+        task,
+        message=f"Job '{task.title}' submitted for supervisor review.",
         severity="info",
     )
     return {"task": _task_to_response(task)}
@@ -1648,8 +1812,8 @@ def ai_final_inspection_route(
 
     result = analyze_final_inspection(str(task_id), _latest_media_url(db, task.id) or task.drawing_url, specs_data)
 
-    # Update status to final_inspection
-    if task.status not in ("completed", "dispatched"):
+    # AI report can support review, but human submission is a separate step.
+    if task.status not in ("completed", "dispatched", "submitted_for_review"):
         task.status = "final_inspection"
     record_ai_report(
         db,
@@ -1688,8 +1852,10 @@ async def supervisor_final_decision_route(
 ):
     """Human review after AI final inspection."""
     task = _get_scoped_task(db, current_user.company_id, task_id)
-    if task.status != "final_inspection":
-        raise HTTPException(status_code=400, detail="Run final inspection before recording the supervisor decision")
+    if task.status != "submitted_for_review":
+        raise HTTPException(status_code=400, detail="Operator must submit the job for review before the supervisor decision")
+    if not request.remarks or not request.remarks.strip():
+        raise HTTPException(status_code=400, detail="Review comment is required")
 
     if request.decision == "rework":
         return await trigger_rework_route(
@@ -1700,6 +1866,14 @@ async def supervisor_final_decision_route(
             current_user,
         )
 
+    review = JobReview(
+        company_id=current_user.company_id,
+        job_id=task.id,
+        reviewer_id=current_user.id,
+        decision="approve",
+        comment=request.remarks.strip(),
+    )
+    db.add(review)
     report = QCReport(
         company_id=current_user.company_id,
         task_id=task.id,
@@ -1707,15 +1881,18 @@ async def supervisor_final_decision_route(
         stage="final",
         qc_status="pass",
         measured_values={},
-        remarks=request.remarks,
+        remarks=request.remarks.strip(),
     )
     db.add(report)
     task.status = "completed"
     task.actual_completion = datetime.now(timezone.utc)
     task.rework_flag = False
     task.timer_started_at = None
+    task.reviewed_by = current_user.id
+    task.review_status = "approved"
+    task.review_comment = request.remarks.strip()
     if task.assigned_to:
-        operator_service.decrement_task_count(db, task.assigned_to)
+        decrement_task_count(db, task.assigned_to)
     db.commit()
     db.refresh(task)
     _broadcast_mes_task_update(
@@ -1738,7 +1915,7 @@ def dispatch_job_route(
 ):
     """Record packing/invoice/transport and move the job to DISPATCHED."""
     task = _get_scoped_task(db, current_user.company_id, task_id)
-    if task.status != "final_inspection":
+    if task.status not in {"final_inspection", "completed"}:
         raise HTTPException(status_code=400, detail="Finalize inspection approval before dispatch")
 
     dispatch_record = DispatchRecord(

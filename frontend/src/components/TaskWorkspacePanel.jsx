@@ -55,7 +55,7 @@ function normalizeLog(log) {
 }
 
 function isCNCJob(task) {
-    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'submitted_for_review', 'dispatched'].includes(task?.status));
 }
 
 export default function TaskWorkspacePanel({ task, role, compact = false }) {

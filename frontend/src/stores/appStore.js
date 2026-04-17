@@ -19,6 +19,7 @@ export const ACTIVE_TASK_STATUSES = new Set([
     'paused',
     'qc_check',
     'final_inspection',
+    'submitted_for_review',
     'dispatched',
     'delayed',
 ]);
@@ -63,7 +64,7 @@ function normalizeUser(user) {
 
 export function filterTasks(tasks, filter) {
     if (filter === 'review') {
-        return tasks.filter((task) => task.status === 'final_inspection');
+        return tasks.filter((task) => task.status === 'submitted_for_review');
     }
     if (filter === 'rework') {
         return tasks.filter((task) => task.rework_flag && task.status !== 'completed');

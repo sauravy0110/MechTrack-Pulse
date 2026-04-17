@@ -23,6 +23,7 @@ const CNC_STATUS_CONFIG = {
     first_piece_approval: { label: 'First Piece QC',   color: '#06B6D4', bg: 'rgba(6,182,212,0.15)'   },
     qc_check:             { label: 'QC Check',          color: '#F97316', bg: 'rgba(249,115,22,0.15)'  },
     final_inspection:     { label: 'Final Inspection',  color: '#14B8A6', bg: 'rgba(20,184,166,0.15)'  },
+    submitted_for_review: { label: 'Pending Review',    color: '#0EA5E9', bg: 'rgba(14,165,233,0.15)'  },
     dispatched:           { label: 'Dispatched',        color: '#22D3EE', bg: 'rgba(34,211,238,0.15)'  },
 };
 
@@ -38,6 +39,7 @@ const CLIENT_LABELS = {
     in_progress:          'In Production',
     qc_check:             'Quality Check',
     final_inspection:     'Final Review',
+    submitted_for_review: 'Pending Review',
     dispatched:           'Shipped',
     completed:            'Delivered',
     idle:                 'Received',

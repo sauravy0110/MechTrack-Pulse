@@ -27,7 +27,7 @@ const WORKFLOW_ACTIONS = {
 
 function formatStatus(status) { return status.replace('_', ' '); }
 function isCNCJob(task) {
-    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'dispatched'].includes(task?.status));
+    return Boolean(task?.is_locked || task?.part_name || ['created', 'planned', 'ready', 'assigned', 'setup', 'setup_done', 'first_piece_approval', 'qc_check', 'final_inspection', 'submitted_for_review', 'dispatched'].includes(task?.status));
 }
 function isPriorityTask(task) {
     return task?.priority === 'high' || task?.priority === 'critical';
@@ -102,7 +102,7 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
     }, [selectedMachine, tasks, taskFilter, taskSort]);
     const machineReviewTasks = useMemo(() => {
         if (!selectedMachine) return [];
-        return tasks.filter((task) => task.machine_id === selectedMachine.id && task.status === 'final_inspection');
+        return tasks.filter((task) => task.machine_id === selectedMachine.id && task.status === 'submitted_for_review');
     }, [selectedMachine, tasks]);
     const machineReworkTasks = useMemo(() => {
         if (!selectedMachine) return [];
@@ -320,9 +320,9 @@ const RightPanel = memo(function RightPanel({ embedded = false }) {
                                 )}
                             </div>
 
-                            {(selectedTask.status === 'final_inspection' || selectedTask.rework_flag) && (
+                            {(selectedTask.status === 'submitted_for_review' || selectedTask.rework_flag) && (
                                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                                    {selectedTask.status === 'final_inspection' && canReviewTasks && (
+                                    {selectedTask.status === 'submitted_for_review' && canReviewTasks && (
                                         <button
                                             type="button"
                                             onClick={() => focusTaskQueue('review', selectedTask)}

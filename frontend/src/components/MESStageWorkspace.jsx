@@ -12,6 +12,7 @@ const CNC_STATUSES = new Set([
     'first_piece_approval',
     'qc_check',
     'final_inspection',
+    'submitted_for_review',
     'dispatched',
 ]);
 const MAX_OPERATOR_QUEUE = 5;
@@ -140,6 +141,11 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
     };
 
     const productionTotals = mesSummary?.production_totals || { produced_qty: 0, rejected_qty: 0, downtime_minutes: 0, log_count: 0 };
+    const reviewImages = mesSummary?.images || [];
+    const reviewProcesses = mesSummary?.processes || [];
+    const reviewSpecs = mesSummary?.specs || [];
+    const productionLogs = mesSummary?.production_logs || [];
+    const latestReview = mesSummary?.latest_review;
 
     return (
         <div className="space-y-3">
@@ -314,16 +320,124 @@ export default function MESStageWorkspace({ task, role, mesSummary, onRefresh })
                         >
                             {busyKey === 'final-ai' ? 'Inspecting...' : 'Run AI Final Inspection'}
                         </button>
+                        <button
+                            type="button"
+                            onClick={() => runAction('submit-review', () => api.post(`/tasks/${task.id}/submit-for-review`, { notes: productionForm.notes || null }))}
+                            className="btn-primary w-full rounded-xl px-4 py-3 text-xs font-semibold"
+                            disabled={busyKey === 'submit-review'}
+                        >
+                            {busyKey === 'submit-review' ? 'Submitting...' : 'Submit For Review'}
+                        </button>
                     </SectionShell>
                 </>
             )}
 
-            {canManage && task.status === 'final_inspection' && (
+            {canOperate && task.status === 'final_inspection' && (
+                <SectionShell title="Submit For Review">
+                    <p className="text-xs text-text-secondary">Production is complete. Send this job to the supervisor review queue with an optional submission note.</p>
+                    <textarea value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} rows={3} placeholder="Notes for supervisor review" className="input-glass w-full rounded-xl px-4 py-3 text-sm" />
+                    <button
+                        type="button"
+                        onClick={() => runAction('submit-review', () => api.post(`/tasks/${task.id}/submit-for-review`, { notes: finalRemarks || null }))}
+                        className="btn-primary w-full rounded-xl px-4 py-3 text-xs font-semibold"
+                        disabled={busyKey === 'submit-review'}
+                    >
+                        {busyKey === 'submit-review' ? 'Submitting...' : 'Submit For Review'}
+                    </button>
+                </SectionShell>
+            )}
+
+            {canManage && task.status === 'submitted_for_review' && (
                 <>
+                    <SectionShell title="Review Summary">
+                        <div className="grid grid-cols-2 gap-2">
+                            <StatPill label="Client" value={mesSummary?.client?.company_name || 'Internal'} />
+                            <StatPill label="Quantity" value={productionTotals.produced_qty || 0} />
+                            <StatPill label="Produced" value={productionTotals.produced_qty || 0} />
+                            <StatPill label="Rejected" value={productionTotals.rejected_qty || 0} tone={productionTotals.rejected_qty ? 'text-warning' : 'text-success'} />
+                        </div>
+                        <div className="rounded-xl border border-border/60 px-3 py-3 text-xs text-text-secondary">
+                            Drawing: <span className="font-semibold text-text-primary">{task.drawing_url ? 'Uploaded' : 'Not attached'}</span>
+                            {task.review_comment ? ` • Submission note: ${task.review_comment}` : ''}
+                        </div>
+                    </SectionShell>
+
+                    <SectionShell title="Process Details">
+                        <div className="space-y-2 text-xs text-text-secondary">
+                            <div className="flex justify-between"><span>Machine used</span><span className="text-text-primary">{machines.find((m) => m.id === (task.machine_id || reviewProcesses[0]?.machine_id))?.name || 'Unassigned'}</span></div>
+                            <div className="flex justify-between"><span>Operator</span><span className="text-text-primary">{operators.find((o) => o.id === task.assigned_to)?.full_name || 'Unassigned'}</span></div>
+                        </div>
+                        <div className="space-y-2">
+                            {reviewProcesses.length === 0 ? (
+                                <p className="text-xs text-text-muted">No process records available.</p>
+                            ) : reviewProcesses.map((item) => (
+                                <div key={item.id} className="rounded-xl border border-border/60 bg-bg-hover/60 px-3 py-3 text-xs text-text-secondary">
+                                    <div className="font-semibold text-text-primary">{item.sequence_order}. {item.operation_name}</div>
+                                    <div className="mt-1">Tool: {item.tool_required || 'Not specified'} • Cycle time: {item.cycle_time_minutes || 0} min</div>
+                                    {item.notes ? <div className="mt-1">{item.notes}</div> : null}
+                                </div>
+                            ))}
+                        </div>
+                    </SectionShell>
+
+                    <SectionShell title="Production Data">
+                        <div className="grid grid-cols-2 gap-2">
+                            <StatPill label="Produced" value={productionTotals.produced_qty || 0} />
+                            <StatPill label="Rejected" value={productionTotals.rejected_qty || 0} />
+                            <StatPill label="Downtime" value={`${productionTotals.downtime_minutes || 0} min`} />
+                            <StatPill label="Logs" value={productionLogs.length} />
+                        </div>
+                    </SectionShell>
+
+                    <SectionShell title="Image Section">
+                        {reviewImages.length === 0 ? (
+                            <p className="text-xs text-text-muted">No images uploaded.</p>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-2">
+                                {reviewImages.slice(0, 4).map((item) => (
+                                    <a key={item.id} href={item.image_url} target="_blank" rel="noreferrer" className="rounded-xl border border-border/60 bg-bg-hover/60 px-3 py-6 text-center text-xs text-text-secondary">
+                                        Open Image
+                                    </a>
+                                ))}
+                            </div>
+                        )}
+                    </SectionShell>
+
+                    <SectionShell title="AI Report">
+                        {mesSummary?.final_inspection ? (
+                            <div className="rounded-xl border border-border/60 bg-bg-hover/60 px-3 py-3 text-xs text-text-secondary">
+                                <div>Status: <span className="font-semibold text-text-primary">{mesSummary.final_inspection.status || 'Unknown'}</span></div>
+                                <div className="mt-1">Confidence: {mesSummary.final_inspection.confidence ?? 'N/A'}</div>
+                                <div className="mt-1">Suggestion: {mesSummary.final_inspection.suggestion || 'No suggestion available'}</div>
+                            </div>
+                        ) : <p className="text-xs text-text-muted">No AI report available.</p>}
+                    </SectionShell>
+
+                    <SectionShell title="Requirement vs Actual">
+                        {reviewSpecs.length === 0 ? (
+                            <p className="text-xs text-text-muted">No specification table available.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {reviewSpecs.map((item) => (
+                                    <div key={item.id} className="grid grid-cols-3 gap-2 rounded-xl border border-border/60 bg-bg-hover/60 px-3 py-3 text-xs text-text-secondary">
+                                        <div><div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Parameter</div><div className="mt-1 text-text-primary">{item.field_name}</div></div>
+                                        <div><div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Required</div><div className="mt-1 text-text-primary">{item.required_value || '-'}</div></div>
+                                        <div><div className="text-[10px] uppercase tracking-[0.14em] text-text-muted">Actual</div><div className="mt-1 text-text-primary">{item.actual_value || '-'}</div></div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </SectionShell>
+
                     <SectionShell title="Final Human Verification">
                         <div className="rounded-xl border border-accent/15 bg-accent/5 px-3 py-3 text-xs leading-5 text-text-secondary">
                             Review the operator submission, uploaded evidence, CNC requirements, and QC trail before releasing this job.
                         </div>
+                        {latestReview ? (
+                            <div className="rounded-xl border border-border/60 bg-bg-hover/60 px-3 py-3 text-xs text-text-secondary">
+                                Latest review: <span className="font-semibold text-text-primary">{latestReview.decision}</span> • {latestReview.comment}
+                            </div>
+                        ) : null}
                         <textarea value={finalRemarks} onChange={(e) => setFinalRemarks(e.target.value)} rows={3} placeholder="Approval notes or rework reason" className="input-glass w-full rounded-xl px-4 py-3 text-sm" />
                         <div className="grid grid-cols-2 gap-2">
                             <button

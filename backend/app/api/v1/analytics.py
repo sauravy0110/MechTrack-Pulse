@@ -164,7 +164,7 @@ def get_task_analytics(
 
     # Status breakdown
     status_counts = {}
-    for status in ["idle", "created", "planned", "ready", "assigned", "setup", "in_progress", "qc_check", "final_inspection", "dispatched", "completed", "delayed"]:
+    for status in ["idle", "created", "planned", "ready", "assigned", "setup", "in_progress", "qc_check", "final_inspection", "submitted_for_review", "dispatched", "completed", "delayed"]:
         count = db.query(Task).filter(
             Task.company_id == company_id,
             Task.status == status,

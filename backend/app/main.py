@@ -46,6 +46,10 @@ _COLUMN_MIGRATIONS = [
     ("users", "duty_expires_at", "TIMESTAMPTZ"),
     ("users", "owner_feedback_score", "DOUBLE PRECISION DEFAULT 3.0"),
     ("users", "operator_feedback_score", "DOUBLE PRECISION DEFAULT 3.0"),
+    ("tasks", "submitted_for_review_at", "TIMESTAMPTZ"),
+    ("tasks", "reviewed_by", "UUID"),
+    ("tasks", "review_status", "VARCHAR(20)"),
+    ("tasks", "review_comment", "TEXT"),
 ]
 
 
@@ -64,6 +68,32 @@ def _run_column_migrations(bind):
             except Exception as exc:
                 print(f"⚠️  Migration {table}.{column}: {exc}")
                 conn.rollback()
+
+
+def _run_review_table_migrations(bind):
+    with bind.connect() as conn:
+        try:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS job_reviews (
+                        id UUID PRIMARY KEY,
+                        company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+                        job_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                        reviewer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                        decision VARCHAR(20) NOT NULL,
+                        comment TEXT NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """
+                )
+            )
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_reviews_company_id ON job_reviews(company_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_reviews_job_id ON job_reviews(job_id)"))
+            conn.commit()
+        except Exception as exc:
+            print(f"⚠️  Review table migration failed: {exc}")
+            conn.rollback()
 
 
 # ── Lifecycle ────────────────────────────────────────────────
@@ -86,6 +116,12 @@ async def lifespan(app: FastAPI):
         print(f"✅ {settings.APP_NAME} — Column migrations applied")
     except Exception as e:
         print(f"⚠️  Column migrations failed: {e}")
+
+    try:
+        _run_review_table_migrations(engine)
+        print(f"✅ {settings.APP_NAME} — Review table migrations applied")
+    except Exception as e:
+        print(f"⚠️  Review table migrations failed: {e}")
 
     # Seed platform admin
     try:
