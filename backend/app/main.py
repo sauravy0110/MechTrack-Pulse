@@ -50,6 +50,16 @@ _COLUMN_MIGRATIONS = [
     ("tasks", "reviewed_by", "UUID"),
     ("tasks", "review_status", "VARCHAR(20)"),
     ("tasks", "review_comment", "TEXT"),
+    # ── CNC Shaft MES columns (previously in migrate_cnc.py) ──
+    # These are safe no-ops if the column already exists (ADD COLUMN IF NOT EXISTS).
+    ("tasks", "is_locked",         "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("tasks", "rework_flag",       "BOOLEAN NOT NULL DEFAULT FALSE"),
+    ("tasks", "rework_iteration",  "INTEGER NOT NULL DEFAULT 0"),
+    ("tasks", "drawing_url",       "TEXT"),
+    ("tasks", "material_type",     "VARCHAR(200)"),
+    ("tasks", "material_batch",    "VARCHAR(200)"),
+    ("tasks", "part_name",         "VARCHAR(200)"),
+    ("tasks", "rework_reason",     "TEXT"),
 ]
 
 
@@ -96,13 +106,39 @@ def _run_review_table_migrations(bind):
             conn.rollback()
 
 
+def _ensure_extensions(bind):
+    """Ensure required PostgreSQL extensions are installed."""
+    with bind.connect() as conn:
+        try:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS pgcrypto;"))
+            conn.commit()
+            print("✅  pgcrypto extension ensured")
+        except Exception as exc:
+            conn.rollback()
+            print(f"⚠️  pgcrypto extension: {exc}")
+
+
 # ── Lifecycle ────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: Create tables (dev only). Shutdown: Cleanup."""
+    """Startup: Create tables, run migrations. Shutdown: Cleanup.
+    
+    ORDER MATTERS — dependencies must exist before dependants:
+      1. pgcrypto extension
+      2. create_all()  → creates companies, tasks, machines, job_specs, job_processes, …
+      3. Column migrations (ALTER TABLE ADD COLUMN IF NOT EXISTS)
+      4. Table-level migrations (job_reviews)
+      5. Seed platform admin
+    """
     import app.models  # noqa: F401
 
-    # Ensure tables exist
+    # 1. Extensions
+    try:
+        _ensure_extensions(engine)
+    except Exception as e:
+        print(f"⚠️  Extensions failed: {e}")
+
+    # 2. Ensure all tables exist (including job_specs, job_processes via ORM models)
     try:
         Base.metadata.create_all(bind=engine)
         print(f"✅ {settings.APP_NAME} — Tables verified/created")
@@ -110,13 +146,14 @@ async def lifespan(app: FastAPI):
         print(f"⚠️  {settings.APP_NAME} — DB not available: {e}")
         print("   Server will start, but DB operations will fail.")
 
-    # Run column migrations for existing tables
+    # 3. Run column migrations for existing tables
     try:
         _run_column_migrations(engine)
         print(f"✅ {settings.APP_NAME} — Column migrations applied")
     except Exception as e:
         print(f"⚠️  Column migrations failed: {e}")
 
+    # 4. Table-level migrations
     try:
         _run_review_table_migrations(engine)
         print(f"✅ {settings.APP_NAME} — Review table migrations applied")
